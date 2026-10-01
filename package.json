@@ -1,0 +1,23 @@
+{
+  "name": "signova",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:mobile",
+    "dev:all": "concurrently -k -n MOBILE,STAFF,ADMIN \"npm run dev:mobile\" \"npm run dev:staff\" \"npm run dev:admin\"",
+    "dev:mobile": "npm run start --workspace @signova/mobile-deaf-user",
+    "dev:staff": "npm run dev --workspace @signova/web-hearing-staff",
+    "dev:admin": "npm run dev --workspace @signova/web-admin-portal",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

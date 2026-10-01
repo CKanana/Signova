@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Signova",
+    "slug": "signova-mobile",
+    "scheme": "signova",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "ke.co.signova.mobile"
+    },
+    "android": {
+      "package": "ke.co.signova.mobile"
+    }
+  }
+}
