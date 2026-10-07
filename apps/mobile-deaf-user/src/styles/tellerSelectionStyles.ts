@@ -1,0 +1,208 @@
+import { StyleSheet } from "react-native";
+import { theme } from "../../../../shared/constants/theme";
+
+export const tellerSelectionStyles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
+  },
+  content: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
+  },
+  intro: {
+    alignItems: "center",
+    marginBottom: theme.spacing.lg,
+  },
+  availabilityLabel: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.radii.pill,
+    backgroundColor: "#E8F3E9",
+  },
+  availabilityDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: theme.colors.success,
+  },
+  availabilityText: {
+    color: theme.colors.success,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  title: {
+    marginTop: theme.spacing.sm,
+    color: theme.colors.text,
+    fontSize: 34,
+    lineHeight: 42,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  titleLarge: {
+    fontSize: 40,
+    lineHeight: 48,
+  },
+  subtitle: {
+    maxWidth: 560,
+    marginTop: theme.spacing.xs,
+    color: theme.colors.mutedText,
+    fontSize: 17,
+    lineHeight: 24,
+    textAlign: "center",
+  },
+  subtitleLarge: {
+    fontSize: 20,
+    lineHeight: 28,
+  },
+  tellerList: {
+    gap: theme.spacing.sm,
+  },
+  tellerOption: {
+    minHeight: 94,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surface,
+  },
+  tellerOptionSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: "#F7F1FB",
+  },
+  tellerOptionPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.99 }],
+  },
+  avatar: {
+    width: 58,
+    height: 58,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 29,
+    backgroundColor: "#F0E8F6",
+  },
+  avatarWithPhoto: {
+    overflow: "hidden",
+    backgroundColor: "transparent",
+  },
+  avatarPhotoSelected: {
+    borderWidth: 3,
+    borderColor: theme.colors.primary,
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 29,
+  },
+  avatarSelected: {
+    backgroundColor: theme.colors.primary,
+  },
+  avatarText: {
+    color: theme.colors.primary,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  avatarTextSelected: {
+    color: "#FFFFFF",
+  },
+  tellerDetails: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameAndStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm,
+  },
+  tellerName: {
+    flexShrink: 1,
+    color: theme.colors.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+  },
+  tellerNameLarge: {
+    fontSize: 21,
+    lineHeight: 28,
+  },
+  inlineAvailability: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  inlineAvailabilityText: {
+    color: theme.colors.success,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  tellerRole: {
+    marginTop: 2,
+    color: theme.colors.primary,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
+  },
+  tellerRoleLarge: {
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  serviceDesk: {
+    marginTop: 2,
+    color: theme.colors.mutedText,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  radio: {
+    width: 25,
+    height: 25,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: "#AAA2AF",
+  },
+  radioSelected: {
+    borderColor: theme.colors.primary,
+  },
+  radioInner: {
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: theme.colors.primary,
+  },
+  footer: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+  },
+  footerNote: {
+    marginBottom: theme.spacing.sm,
+    color: theme.colors.mutedText,
+    fontSize: 13,
+    textAlign: "center",
+  },
+});
