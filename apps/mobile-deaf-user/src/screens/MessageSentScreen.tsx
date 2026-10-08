@@ -11,7 +11,7 @@ export function MessageSentScreen() {
   const isLargeText = accessibility?.largeText ?? false;
 
   const lastUserMessage = [...messages].reverse().find((m) => m.sender === "user");
-  const messageText = lastUserMessage?.text || "Hello, I need help with my account.";
+  const messageText = lastUserMessage?.text ?? "";
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -8,7 +8,7 @@ import { AccessibleCard } from "../components/ui/AccessibleCard";
 import { conversationStyles as styles } from "../styles/conversationStyles";
 
 export function ConversationScreen() {
-  const { messages, staff, goToStep, accessibility } = useSession();
+  const { messages, staff, goToStep, endSession, accessibility } = useSession();
   const scrollViewRef = useRef<ScrollView>(null);
   const isLargeText = accessibility?.largeText ?? false;
 
@@ -119,7 +119,7 @@ export function ConversationScreen() {
           variant="ghost"
           size="md"
           fullWidth
-          onPress={() => goToStep("complete")}
+          onPress={() => void endSession()}
           textStyle={styles.endBtnText}
         >
           End session

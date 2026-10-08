@@ -1,20 +1,20 @@
 import React, { useEffect } from "react";
-import { View, Text, ScrollView } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
 import { translatingStyles as styles } from "../styles/translatingStyles";
 
 export function TranslatingScreen() {
-  const { goToStep, accessibility } = useSession();
+  const { goToStep, requestTranslation, isTranslating, error, accessibility } = useSession();
   const isLargeText = accessibility?.largeText ?? false;
 
+  // Request a real translation through the model-agnostic seam when this screen
+  // mounts. The context advances to "confirm" (high confidence) or "uncertain"
+  // (low confidence) based on the server's response. No fake timers.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      goToStep("confirm");
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [goToStep]);
+    void requestTranslation();
+  }, [requestTranslation]);
 
   return (
     <ScrollView
@@ -36,18 +36,29 @@ export function TranslatingScreen() {
         </Text>
 
         <View style={styles.progressTrack}>
-          <View style={styles.progressFill} />
+          {isTranslating && <ActivityIndicator color="#5B2A86" />}
         </View>
 
-        <TouchButton
-          variant="primary"
-          size="lg"
-          fullWidth
-          onPress={() => goToStep("confirm")}
-          icon={<Feather name="check" size={20} color="#FFFFFF" />}
-        >
-          Translation complete
-        </TouchButton>
+        {error && !isTranslating && (
+          <View style={styles.errorWrap}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchButton variant="outline" size="md" onPress={() => void requestTranslation()}>
+              Try again
+            </TouchButton>
+          </View>
+        )}
+
+        {!isTranslating && !error && (
+          <TouchButton
+            variant="primary"
+            size="lg"
+            fullWidth
+            onPress={() => goToStep("confirm")}
+            icon={<Feather name="check" size={20} color="#FFFFFF" />}
+          >
+            Translation complete
+          </TouchButton>
+        )}
       </View>
     </ScrollView>
   );

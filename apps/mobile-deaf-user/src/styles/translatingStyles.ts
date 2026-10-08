@@ -58,4 +58,15 @@ export const translatingStyles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     borderRadius: 6,
   },
+  errorWrap: {
+    marginTop: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  errorText: {
+    color: theme.colors.danger,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
 });

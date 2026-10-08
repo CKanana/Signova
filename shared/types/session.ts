@@ -59,6 +59,8 @@ export interface AccessibilitySettings {
   language: string;
 }
 
+import type { TranslateResponse, Teller } from "./mobile";
+
 export interface SessionContextValue {
   step: Step;
   previousStep: Step | null;
@@ -86,4 +88,20 @@ export interface SessionContextValue {
   updateAccessibility: (settings: Partial<AccessibilitySettings>) => void;
   updateOrganisation: (org: Partial<OrganisationInfo>) => void;
   resetSession: () => void;
+
+  // Phase 2 backend-backed actions
+  tellers: Teller[];
+  loadOrganisation: () => Promise<void>;
+  loadTellers: () => Promise<void>;
+  selectTeller: (teller: Teller) => Promise<boolean>;
+  connectToSession: () => void;
+  requestTranslation: () => Promise<TranslateResponse | null>;
+  confirmAndSend: (text: string) => Promise<void>;
+  sendTextMessage: (text: string) => Promise<void>;
+  endSession: () => Promise<void>;
+  isCreatingSession: boolean;
+  isTranslating: boolean;
+  isLoadingOrg: boolean;
+  isLoadingTellers: boolean;
+  error: string | null;
 }

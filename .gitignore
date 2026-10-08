@@ -7,7 +7,11 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env.*
 !.env.example
+
+# Local server scripts
+/server/scripts/
 
 # Build outputs
 dist/
@@ -41,3 +45,7 @@ venv/
 *.tflite
 *.h5
 *.ckpt
+
+# Test artifacts (mongodb-memory-server downloads a mongod binary here)
+.cache/
+.mongodb-memory-server*/

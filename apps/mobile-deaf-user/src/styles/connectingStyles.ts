@@ -109,4 +109,15 @@ export const connectingStyles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
   },
+  errorRow: {
+    marginTop: theme.spacing.lg,
+    alignItems: "center",
+    gap: theme.spacing.md,
+  },
+  errorText: {
+    color: theme.colors.danger,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
 });

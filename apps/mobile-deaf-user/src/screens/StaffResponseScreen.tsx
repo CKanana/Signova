@@ -7,8 +7,11 @@ import { TouchButton } from "../components/ui/TouchButton";
 import { staffResponseStyles as styles } from "../styles/staffResponseStyles";
 
 export function StaffResponseScreen() {
-  const { staff, goToStep, accessibility, updateAccessibility } = useSession();
+  const { messages, staff, goToStep, accessibility, updateAccessibility } = useSession();
   const isLargeText = accessibility?.largeText ?? false;
+
+  // The latest staff message, delivered in real time over the socket.
+  const latestStaffMessage = [...messages].reverse().find((m) => m.sender === "staff");
 
   const toggleTextSize = () => {
     updateAccessibility({ largeText: !isLargeText });
@@ -38,7 +41,7 @@ export function StaffResponseScreen() {
           </View>
 
           <Text style={[styles.responseText, isLargeText && styles.responseTextLarge]}>
-            “Please wait while I check your account.”
+            “{latestStaffMessage?.text || ""}”
           </Text>
         </View>
 

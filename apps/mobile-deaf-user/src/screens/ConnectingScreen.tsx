@@ -3,33 +3,46 @@ import { View, Text, ScrollView, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { theme } from "../../../../shared/constants/theme";
 import { useSession } from "../context/SessionContext";
+import { TouchButton } from "../components/ui/TouchButton";
 import { connectingStyles as styles } from "../styles/connectingStyles";
 
 export function ConnectingScreen() {
-  const { goToStep, staff, accessibility } = useSession();
+  const { goToStep, staff, accessibility, connectToSession, isConnected, error } = useSession();
   const [progress] = useState(new Animated.Value(0.15));
   const [connected, setConnected] = useState(false);
   const isLargeText = accessibility?.largeText ?? false;
 
+  // Establish the real Socket.IO connection when this screen mounts. The
+  // context advances to "live" on the server's session:connected event, or to
+  // "offline" if the socket can't connect in time. No fake timers.
   useEffect(() => {
-    let navigationTimer: ReturnType<typeof setTimeout> | undefined;
+    connectToSession();
+  }, [connectToSession]);
+
+  // Reflect the real connection state.
+  useEffect(() => {
+    if (isConnected) {
+      setConnected(true);
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
     const animation = Animated.timing(progress, {
       toValue: 0.85,
       duration: 1600,
       useNativeDriver: false,
     });
 
-    animation.start(({ finished }) => {
-      if (!finished) return;
-      setConnected(true);
-      navigationTimer = setTimeout(() => goToStep("live"), 650);
-    });
+    animation.start();
 
     return () => {
       animation.stop();
-      if (navigationTimer) clearTimeout(navigationTimer);
     };
-  }, [goToStep, progress]);
+  }, [progress]);
+
+  const retryConnection = () => {
+    connectToSession();
+  };
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
@@ -79,6 +92,15 @@ export function ConnectingScreen() {
         <Text style={styles.waitHint}>
           {connected ? "Starting live communication" : "Please wait while we connect you."}
         </Text>
+
+        {error && !connected && (
+          <View style={styles.errorRow}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchButton variant="outline" size="md" onPress={retryConnection}>
+              Retry connection
+            </TouchButton>
+          </View>
+        )}
       </View>
     </ScrollView>
   );

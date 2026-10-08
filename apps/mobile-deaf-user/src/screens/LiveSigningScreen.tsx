@@ -17,7 +17,7 @@ import { TouchButton } from "../components/ui/TouchButton";
 import { liveSigningStyles as styles } from "../styles/liveSigningStyles";
 
 export function LiveSigningScreen() {
-  const { goToStep, detectedGloss, currentDraft, sendMessage, messages, staff, accessibility } =
+  const { goToStep, requestTranslation, isTranslating, endSession, messages, staff, accessibility } =
     useSession();
   const { width, height } = useWindowDimensions();
   const isTablet = width >= 768;
@@ -68,9 +68,16 @@ export function LiveSigningScreen() {
     }
   };
 
-  const translatedText = detectedGloss || currentDraft;
   const latestStaffMessage = [...messages].reverse().find((message) => message.sender === "staff");
   const hasCameraPermission = cameraPermission?.granted === true;
+
+  // "Review and send" triggers a real translation through the model-agnostic
+  // seam. The context routes to "confirm" (high confidence) or "uncertain"
+  // (low confidence) based on the server's response — there is no fabricated
+  // confidence anywhere in the UI.
+  const handleReviewAndSend = () => {
+    goToStep("translating");
+  };
 
   return (
     <ScrollView
@@ -197,7 +204,7 @@ export function LiveSigningScreen() {
                 variant="ghost"
                 size="md"
                 style={styles.controlBtn}
-                onPress={() => goToStep("complete")}
+                onPress={() => void endSession()}
                 icon={<Feather name="x" size={18} color={theme.colors.text} />}
               >
                 End
@@ -216,15 +223,16 @@ export function LiveSigningScreen() {
               </View>
               <Text style={styles.panelTitle}>Translation check</Text>
               <Text style={[styles.glossText, isLargeText && styles.glossTextLarge]}>
-                “{translatedText || "Your signs will appear here."}”
+                {isTranslating ? "Translating your sign…" : "Your translation will appear here after you sign."}
               </Text>
               <View style={styles.sendRow}>
                 <TouchButton
                   variant="primary"
                   size="md"
                   style={styles.sendButton}
-                  disabled={!translatedText.trim()}
-                  onPress={() => goToStep("confirm")}
+                  disabled={isTranslating}
+                  loading={isTranslating}
+                  onPress={handleReviewAndSend}
                   icon={<Feather name="check" size={18} color="#FFFFFF" />}
                 >
                   Review and send

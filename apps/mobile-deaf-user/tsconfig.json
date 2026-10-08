@@ -6,6 +6,7 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "../../shared/constants/theme.ts"
+    "../../shared/constants/theme.ts",
+    "../../shared/types/**/*.ts"
   ]
 }

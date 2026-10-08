@@ -13,13 +13,13 @@ import { TouchButton } from "../components/ui/TouchButton";
 import { textMessageStyles as styles } from "../styles/textMessageStyles";
 
 export function TextMessageScreen() {
-  const { sendMessage, goBack, accessibility } = useSession();
-  const [text, setText] = useState("Hello, I need help with my account.");
+  const { sendTextMessage, goBack, accessibility } = useSession();
+  const [text, setText] = useState("");
   const isLargeText = accessibility?.largeText ?? false;
 
   const handleSend = () => {
     if (text.trim()) {
-      sendMessage(text.trim(), "text");
+      void sendTextMessage(text.trim());
     }
   };
 

@@ -7,13 +7,13 @@ import { TouchButton } from "../components/ui/TouchButton";
 import { confirmSignStyles as styles } from "../styles/confirmSignStyles";
 
 export function ConfirmSignScreen() {
-  const { currentDraft, sendMessage, goToStep, accessibility } = useSession();
+  const { currentDraft, confirmAndSend, goToStep, accessibility, confidence } = useSession();
   const isLargeText = accessibility?.largeText ?? false;
 
-  const messageText = currentDraft || "Hello, I need help with my account.";
+  const messageText = currentDraft;
 
   const handleSend = () => {
-    sendMessage(messageText, "sign");
+    void confirmAndSend(messageText);
   };
 
   const handleRetry = () => {

@@ -1,34 +1,10 @@
 import React, { useState } from "react";
 import { Feather } from "@expo/vector-icons";
-import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Image, Pressable, ScrollView, Text, View, useWindowDimensions, ActivityIndicator } from "react-native";
 import type { StaffInfo } from "../../../../shared/types/session";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
 import { tellerSelectionStyles as styles } from "../styles/tellerSelectionStyles";
-
-const AVAILABLE_TELLERS: StaffInfo[] = [
-	{
-		name: "Grace Wanjiku",
-		role: "Kenyan Sign Language · English",
-		serviceDesk: "Customer Support · Main Reception",
-		counterNumber: "04",
-		isAvailable: true,
-	},
-	{
-		name: "Brian Otieno",
-		role: "Kenyan Sign Language · English",
-		serviceDesk: "Patient Services · West Wing",
-		counterNumber: "02",
-		isAvailable: true,
-	},
-	{
-		name: "Njeri Kamau",
-		role: "Kenyan Sign Language · English",
-		serviceDesk: "Outpatient Services · Ground Floor",
-		counterNumber: "07",
-		isAvailable: true,
-	},
-];
 
 function getInitials(name: string): string {
 	return name
@@ -37,17 +13,55 @@ function getInitials(name: string): string {
 		.join("");
 }
 
+/** Map a backend Teller to the StaffInfo shape this screen's UI expects. */
+function toStaffInfo(teller: {
+	_id: string;
+	name: string;
+	serviceLabel: string;
+	serviceDesk: string;
+	counterNumber: string;
+	status: string;
+}): StaffInfo {
+	return {
+		name: teller.name,
+		role: teller.serviceLabel,
+		serviceDesk: teller.serviceDesk,
+		counterNumber: teller.counterNumber,
+		isAvailable: teller.status === "FREE",
+	};
+}
+
 export function TellerSelectionScreen() {
-	const { goToStep, setStaff, accessibility } = useSession();
+	const { tellers, selectTeller, loadTellers, isLoadingTellers, isCreatingSession, error, accessibility } = useSession();
 	const { width } = useWindowDimensions();
 	const isTablet = width >= 768;
 	const [selectedTeller, setSelectedTeller] = useState<StaffInfo | null>(null);
+	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const isLargeText = accessibility?.largeText ?? false;
 
-	const handleContinue = () => {
-		if (!selectedTeller) return;
-		setStaff(selectedTeller);
-		goToStep("connecting");
+	// The backend is the source of truth for availability. Only FREE tellers
+	// are selectable; the list already reflects live status.
+	const availableTellers = tellers.filter((t) => t.status === "FREE");
+
+	const handleSelect = (teller: (typeof tellers)[number]) => {
+		setSelectedTeller(toStaffInfo(teller));
+		setSelectedId(teller._id);
+	};
+
+	const handleContinue = async () => {
+		if (!selectedId) return;
+		const teller = tellers.find((t) => t._id === selectedId);
+		if (!teller) return;
+		const ok = await selectTeller(teller);
+		// On success the context advances to "connecting". On failure (e.g. the
+		// teller became BUSY and the backend returned 409) an error is shown and
+		// we stay here so the user can pick another teller.
+		if (!ok) {
+			// Refresh the list so the just-taken teller shows as unavailable.
+			await loadTellers();
+			setSelectedTeller(null);
+			setSelectedId(null);
+		}
 	};
 
 	return (
@@ -61,7 +75,9 @@ export function TellerSelectionScreen() {
 					<View style={styles.intro}>
 						<View style={styles.availabilityLabel}>
 							<View style={styles.availabilityDot} />
-							  <Text style={styles.availabilityText}>{AVAILABLE_TELLERS.length} TELLERS AVAILABLE</Text>
+							<Text style={styles.availabilityText}>
+								{isLoadingTellers ? "LOADING TELLERS…" : `${availableTellers.length} TELLERS AVAILABLE`}
+							</Text>
 						</View>
 						<Text style={[styles.title, isLargeText && styles.titleLarge]}>
 							Choose a teller
@@ -71,16 +87,45 @@ export function TellerSelectionScreen() {
 						</Text>
 					</View>
 
+					{isLoadingTellers && (
+						<View style={styles.statusBlock}>
+							<ActivityIndicator color="#5B2A86" />
+							<Text style={styles.statusText}>Loading available tellers…</Text>
+						</View>
+					)}
+
+					{!isLoadingTellers && availableTellers.length === 0 && !error && (
+						<View style={styles.statusBlock}>
+							<Text style={styles.statusTitle}>No tellers available</Text>
+							<Text style={styles.statusText}>
+								All counters are busy right now. Please try again in a moment.
+							</Text>
+							<TouchButton variant="outline" size="md" onPress={() => void loadTellers()}>
+								Refresh
+							</TouchButton>
+						</View>
+					)}
+
+					{error && (
+						<View style={styles.statusBlock}>
+							<Text style={styles.statusTitle}>Something went wrong</Text>
+							<Text style={styles.statusText}>{error}</Text>
+							<TouchButton variant="outline" size="md" onPress={() => void loadTellers()}>
+								Try again
+							</TouchButton>
+						</View>
+					)}
+
 					<View style={styles.tellerList}>
-						{AVAILABLE_TELLERS.map((teller) => {
-							const isSelected = selectedTeller?.name === teller.name;
+						{availableTellers.map((teller) => {
+							const isSelected = selectedId === teller._id;
 							return (
 								<Pressable
-									key={teller.name}
-									onPress={() => setSelectedTeller(teller)}
+									key={teller._id}
+									onPress={() => handleSelect(teller)}
 									accessible
 									accessibilityRole="radio"
-									accessibilityLabel={`${teller.name}, ${teller.role}, ${teller.serviceDesk}, available`}
+									accessibilityLabel={`${teller.name}, ${teller.serviceLabel}, ${teller.serviceDesk}, available`}
 									accessibilityState={{ selected: isSelected }}
 									style={({ pressed }) => [
 										styles.tellerOption,
@@ -121,7 +166,7 @@ export function TellerSelectionScreen() {
 											</View>
 										</View>
 										<Text style={[styles.tellerRole, isLargeText && styles.tellerRoleLarge]}>
-											{teller.role}
+											{teller.serviceLabel}
 										</Text>
 										<View style={styles.serviceDeskRow}>
 											<Feather name="map-pin" size={13} color="#77717C" />
@@ -164,14 +209,19 @@ export function TellerSelectionScreen() {
 						variant="primary"
 						size="touch"
 						fullWidth
-						disabled={!selectedTeller}
+						disabled={!selectedId || isCreatingSession}
+						loading={isCreatingSession}
 						onPress={handleContinue}
 						accessibilityLabel={
 							selectedTeller ? `Connect with ${selectedTeller.name}` : "Choose a teller to continue"
 						}
 						icon={<Feather name="arrow-right" size={22} color="#FFFFFF" />}
 					>
-						{selectedTeller ? `Connect with ${selectedTeller.name.split(" ")[0]}` : "Choose a teller"}
+						{isCreatingSession
+							? "Connecting…"
+							: selectedTeller
+								? `Connect with ${selectedTeller.name.split(" ")[0]}`
+								: "Choose a teller"}
 					</TouchButton>
 				</View>
 			</View>
