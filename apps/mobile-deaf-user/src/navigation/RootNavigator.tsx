@@ -8,8 +8,6 @@ import { MethodSelectScreen } from "../screens/MethodSelectScreen";
 import { TellerSelectionScreen } from "../screens/TellerSelectionScreen";
 import { TextMessageScreen } from "../screens/TextMessageScreen";
 import { ConnectingScreen } from "../screens/ConnectingScreen";
-import { CameraPermissionScreen } from "../screens/CameraPermissionScreen";
-import { ReadyToSignScreen } from "../screens/ReadyToSignScreen";
 import { LiveSigningScreen } from "../screens/LiveSigningScreen";
 import { TranslatingScreen } from "../screens/TranslatingScreen";
 import { ConfirmSignScreen } from "../screens/ConfirmSignScreen";
@@ -39,10 +37,6 @@ export function RootNavigator() {
         return <TextMessageScreen />;
       case "connecting":
         return <ConnectingScreen />;
-      case "permission":
-        return <CameraPermissionScreen />;
-      case "ready":
-        return <ReadyToSignScreen />;
       case "live":
         return <LiveSigningScreen />;
       case "translating":

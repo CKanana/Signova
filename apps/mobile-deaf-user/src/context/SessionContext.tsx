@@ -112,14 +112,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         goToStep("method");
         break;
       case "live":
-        goToStep("ready");
+        goToStep("tellers");
         break;
       case "translating":
         goToStep("live");
         break;
       case "confirm":
       case "uncertain":
-        goToStep("ready");
+        goToStep("live");
         break;
       case "sent":
         goToStep("conversation");

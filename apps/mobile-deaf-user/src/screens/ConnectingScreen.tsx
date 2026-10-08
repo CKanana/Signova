@@ -3,7 +3,6 @@ import { View, Text, ScrollView, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { theme } from "../../../../shared/constants/theme";
 import { useSession } from "../context/SessionContext";
-import { TouchButton } from "../components/ui/TouchButton";
 import { connectingStyles as styles } from "../styles/connectingStyles";
 
 export function ConnectingScreen() {
@@ -13,18 +12,24 @@ export function ConnectingScreen() {
   const isLargeText = accessibility?.largeText ?? false;
 
   useEffect(() => {
-    Animated.timing(progress, {
+    let navigationTimer: ReturnType<typeof setTimeout> | undefined;
+    const animation = Animated.timing(progress, {
       toValue: 0.85,
       duration: 1600,
       useNativeDriver: false,
-    }).start(() => {
-      setConnected(true);
     });
-  }, [progress]);
 
-  const handleContinue = () => {
-    goToStep("permission");
-  };
+    animation.start(({ finished }) => {
+      if (!finished) return;
+      setConnected(true);
+      navigationTimer = setTimeout(() => goToStep("live"), 650);
+    });
+
+    return () => {
+      animation.stop();
+      if (navigationTimer) clearTimeout(navigationTimer);
+    };
+  }, [goToStep, progress]);
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
@@ -58,10 +63,10 @@ export function ConnectingScreen() {
         {/* Status Card with Progress Bar */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeaderRow}>
-            <Feather name="clock" size={22} color={theme.colors.primary} />
+            <Feather name={connected ? "check-circle" : "clock"} size={22} color={theme.colors.primary} />
             <Text style={styles.statusTitle}>
               {connected
-                ? `Connected with ${staff?.name || "Grace W."}`
+                ? `Connected with ${staff.name}. Opening your signing space...`
                 : `Connecting to ${staff.name}...`}
             </Text>
           </View>
@@ -71,17 +76,9 @@ export function ConnectingScreen() {
           </View>
         </View>
 
-        <View style={styles.buttonContainer}>
-          <TouchButton
-            variant="primary"
-            size="touch"
-            fullWidth
-            onPress={handleContinue}
-            icon={<Feather name="chevron-right" size={22} color="#FFFFFF" />}
-          >
-            {connected ? "Staff found · Connect now" : "Connecting..."}
-          </TouchButton>
-        </View>
+        <Text style={styles.waitHint}>
+          {connected ? "Starting live communication" : "Please wait while we connect you."}
+        </Text>
       </View>
     </ScrollView>
   );

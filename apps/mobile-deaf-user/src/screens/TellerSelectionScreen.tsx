@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Feather } from "@expo/vector-icons";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import type { StaffInfo } from "../../../../shared/types/session";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
@@ -39,6 +39,8 @@ function getInitials(name: string): string {
 
 export function TellerSelectionScreen() {
 	const { goToStep, setStaff, accessibility } = useSession();
+	const { width } = useWindowDimensions();
+	const isTablet = width >= 768;
 	const [selectedTeller, setSelectedTeller] = useState<StaffInfo | null>(null);
 	const isLargeText = accessibility?.largeText ?? false;
 
@@ -121,7 +123,10 @@ export function TellerSelectionScreen() {
 										<Text style={[styles.tellerRole, isLargeText && styles.tellerRoleLarge]}>
 											{teller.role}
 										</Text>
-										<Text style={styles.serviceDesk}>{teller.serviceDesk}</Text>
+										<View style={styles.serviceDeskRow}>
+											<Feather name="map-pin" size={13} color="#77717C" />
+											<Text style={styles.serviceDesk}>{teller.serviceDesk}</Text>
+										</View>
 									</View>
 
 									<View style={[styles.radio, isSelected && styles.radioSelected]}>
@@ -134,21 +139,41 @@ export function TellerSelectionScreen() {
 				</View>
 			</ScrollView>
 
-			<View style={styles.footer}>
-				<Text style={styles.footerNote}>You can ask for another teller at any time.</Text>
-				<TouchButton
-					variant="primary"
-					size="touch"
-					fullWidth
-					disabled={!selectedTeller}
-					onPress={handleContinue}
-					accessibilityLabel={
-						selectedTeller ? `Connect with ${selectedTeller.name}` : "Choose a teller to continue"
-					}
-					icon={<Feather name="arrow-right" size={22} color="#FFFFFF" />}
-				>
-					{selectedTeller ? `Connect with ${selectedTeller.name.split(" ")[0]}` : "Choose a teller"}
-				</TouchButton>
+			<View style={[styles.footer, isTablet && styles.footerTablet]}>
+				<View style={styles.footerSelection}>
+					<View style={[styles.footerSelectionMark, selectedTeller && styles.footerSelectionMarkActive]}>
+						<Feather
+							name={selectedTeller ? "check" : "users"}
+							size={19}
+							color={selectedTeller ? "#FFFFFF" : "#5B2A86"}
+						/>
+					</View>
+					<View style={styles.footerSelectionCopy}>
+						<Text style={styles.footerSelectionTitle}>
+							{selectedTeller?.name || "Choose a teller"}
+						</Text>
+						<Text style={styles.footerNote}>
+							{selectedTeller
+								? `${selectedTeller.serviceDesk} · Counter ${selectedTeller.counterNumber}`
+								: "Select someone to continue"}
+						</Text>
+					</View>
+				</View>
+				<View style={[styles.connectButtonWrap, isTablet && styles.connectButtonWrapTablet]}>
+					<TouchButton
+						variant="primary"
+						size="touch"
+						fullWidth
+						disabled={!selectedTeller}
+						onPress={handleContinue}
+						accessibilityLabel={
+							selectedTeller ? `Connect with ${selectedTeller.name}` : "Choose a teller to continue"
+						}
+						icon={<Feather name="arrow-right" size={22} color="#FFFFFF" />}
+					>
+						{selectedTeller ? `Connect with ${selectedTeller.name.split(" ")[0]}` : "Choose a teller"}
+					</TouchButton>
+				</View>
 			</View>
 		</View>
 	);

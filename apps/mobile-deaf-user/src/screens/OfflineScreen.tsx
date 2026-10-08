@@ -28,6 +28,7 @@ export function OfflineScreen() {
         <Text style={[styles.body, isLargeText && styles.bodyLarge]}>
           We’re having trouble connecting to the service. Your message is safe on this tablet.
         </Text>
+        
 
         <View style={styles.buttonStack}>
           <TouchButton

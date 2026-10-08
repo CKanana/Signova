@@ -5,6 +5,17 @@
     "scheme": "signova",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Signova uses your camera to help translate sign language during this session.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ]
+    ],
     "ios": {
       "bundleIdentifier": "ke.co.signova.mobile"
     },

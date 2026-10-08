@@ -1,5 +1,5 @@
-import React from "react";
-import { BlurView } from "expo-blur";
+import React, { useRef } from "react";
+import { BlurTargetView, BlurView } from "expo-blur";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useSession } from "../context/SessionContext";
@@ -8,22 +8,26 @@ import { welcomeStyles as styles } from "../styles/welcomeStyles";
 
 export function WelcomeScreen() {
   const { organisation, goToStep, accessibility } = useSession();
+  const blurTarget = useRef<View | null>(null);
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const isLargeText = accessibility?.largeText ?? false;
 
   return (
     <View style={styles.container}>
-      <Image
-        source={require("../assets/kenyan-deaf-user-signing.jpg")}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-        accessible={false}
-      />
+      <BlurTargetView ref={blurTarget} style={styles.backgroundImage}>
+        <Image
+          source={require("../assets/kenyan-deaf-user-signing.jpg")}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+          accessible={false}
+        />
+      </BlurTargetView>
       <BlurView
         intensity={isTablet ? 28 : 22}
         tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
+        blurMethod="dimezisBlurView"
+        blurTarget={blurTarget}
         pointerEvents="none"
         style={styles.blurLayer}
       />

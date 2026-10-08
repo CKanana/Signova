@@ -42,7 +42,7 @@ export function UncertainFallbackScreen() {
             variant="primary"
             size="touch"
             fullWidth
-            onPress={() => goToStep("ready")}
+            onPress={() => goToStep("live")}
             icon={<Feather name="rotate-ccw" size={20} color="#FFFFFF" />}
           >
             Try signing again

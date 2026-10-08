@@ -17,7 +17,7 @@ export function ConfirmSignScreen() {
   };
 
   const handleRetry = () => {
-    goToStep("ready");
+    goToStep("live");
   };
 
   const handleEdit = () => {

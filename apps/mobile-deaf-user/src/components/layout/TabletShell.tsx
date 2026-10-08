@@ -1,12 +1,12 @@
 import React from "react";
 import {
-  SafeAreaView,
   StatusBar,
   View,
   Text,
   useWindowDimensions,
   Pressable,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../../../../../shared/constants/theme";
 import { useSession } from "../../context/SessionContext";
 import { TabletHeader } from "./TabletHeader";

@@ -77,7 +77,7 @@ export function ConversationScreen() {
             variant="primary"
             size="touch"
             style={styles.signBtn}
-            onPress={() => goToStep("ready")}
+            onPress={() => goToStep("live")}
             icon={
               <MaterialCommunityIcons
                 name="hand-back-right"

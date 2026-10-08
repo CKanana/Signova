@@ -1,5 +1,5 @@
-import React from "react";
-import { BlurView } from "expo-blur";
+import React, { useRef } from "react";
+import { BlurTargetView, BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image, Pressable, Text, View, useWindowDimensions } from "react-native";
@@ -8,6 +8,7 @@ import { methodSelectStyles as styles } from "../styles/methodSelectStyles";
 
 export function MethodSelectScreen() {
   const { setMethod, goToStep, accessibility, organisation } = useSession();
+  const blurTarget = useRef<View | null>(null);
   const { width, height } = useWindowDimensions();
   const isTablet = width >= 768;
   const isCompactPhone = width < 430;
@@ -27,16 +28,19 @@ export function MethodSelectScreen() {
 
   return (
     <View style={styles.container}>
-      <Image
-        source={require("../assets/kenyan-deaf-user-signing.jpg")}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-        accessible={false}
-      />
+      <BlurTargetView ref={blurTarget} style={styles.backgroundImage}>
+        <Image
+          source={require("../assets/kenyan-deaf-user-signing.jpg")}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+          accessible={false}
+        />
+      </BlurTargetView>
       <BlurView
         intensity={isTablet ? 30 : 24}
         tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
+        blurMethod="dimezisBlurView"
+        blurTarget={blurTarget}
         pointerEvents="none"
         style={styles.blurLayer}
       />

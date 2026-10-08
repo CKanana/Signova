@@ -102,7 +102,11 @@ export const connectingStyles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
     borderRadius: 5,
   },
-  buttonContainer: {
-    width: "100%",
+  waitHint: {
+    marginTop: theme.spacing.md,
+    color: theme.colors.mutedText,
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
   },
 });
