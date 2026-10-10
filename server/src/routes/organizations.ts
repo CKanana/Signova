@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getOrgHandler,
+  listPublicOrganizationsHandler,
   updateOrgHandler,
 } from "../controllers/organizationController.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -8,6 +9,10 @@ import { validate } from "../middleware/validate.js";
 import { z } from "zod";
 
 const router = Router();
+
+// Public (unauthenticated): the org dropdown for staff self-registration.
+// Exposes only id + name of active organizations.
+router.get("/public", listPublicOrganizationsHandler);
 
 // Org config is readable by any authenticated user (needed for branding).
 router.get("/me", requireAuth, getOrgHandler);

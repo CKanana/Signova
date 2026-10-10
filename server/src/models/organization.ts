@@ -10,6 +10,19 @@ export interface IOrganization {
   counterLabel: string;
   colors: { primary: string; background: string };
   logoUrl?: string;
+  /**
+   * Public-registration email-domain policy.
+   *
+   * When `restrictRegistrationByDomain` is true, public staff registration
+   * only accepts emails whose domain appears in `allowedEmailDomains`.
+   * When false (the default), that organization accepts any valid email.
+   *
+   * This governs registration only — it never grants privileges, and role
+   * assignment is always decided server-side (public registration is
+   * always STAFF, never ADMIN).
+   */
+  restrictRegistrationByDomain: boolean;
+  allowedEmailDomains: string[];
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +40,8 @@ const organizationSchema = new Schema<IOrganization>(
       background: { type: String, default: "#FFF8DC" },
     },
     logoUrl: { type: String },
+    restrictRegistrationByDomain: { type: Boolean, default: false },
+    allowedEmailDomains: { type: [String], default: [] },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },

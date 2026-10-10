@@ -12,6 +12,13 @@ export interface IUser {
   avatar?: string;
   passwordHash?: string;
   totpSecret?: string; // AES-256-GCM encrypted at rest
+  /**
+   * The absolute TOTP time-step of the last accepted code. A code whose
+   * step was already used is rejected, so a captured code cannot be
+   * replayed within the verification window. Updated atomically in the
+   * same operation that claims the step (see authService.claimTotpStep).
+   */
+  totpLastUsedStep?: number;
   twoFactorEnabled: boolean;
   twoFactorConfirmedAt?: Date;
   failedLoginCount: number;
@@ -31,6 +38,7 @@ const userSchema = new Schema<IUser>(
     avatar: { type: String },
     passwordHash: { type: String, select: false },
     totpSecret: { type: String, select: false },
+    totpLastUsedStep: { type: Number, select: false },
     twoFactorEnabled: { type: Boolean, default: false },
     twoFactorConfirmedAt: { type: Date },
     failedLoginCount: { type: Number, default: 0 },

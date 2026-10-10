@@ -5,6 +5,9 @@
     "scheme": "signova",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "web": {
+      "favicon": "./src/assets/signova-brand-assets/favicons/hands-s/favicon-48x48.png"
+    },
     "plugins": [
       [
         "expo-camera",

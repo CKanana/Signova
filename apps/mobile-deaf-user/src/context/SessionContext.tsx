@@ -414,13 +414,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void loadTellers();
   }, [loadOrganisation, loadTellers]);
 
-  // Advance past splash once the org config has loaded.
-  useEffect(() => {
-    if (step === "splash" && (organisation || isLoadingOrg === false)) {
-      goToStep("welcome");
-    }
-  }, [step, organisation, isLoadingOrg, goToStep]);
-
   /* ---------------------------------------------------------------------- */
   /* Context value                                                           */
   /* ---------------------------------------------------------------------- */

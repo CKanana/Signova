@@ -25,7 +25,13 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
-      error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) },
+      error: {
+        // Prefer the specific error code so clients can branch on it
+        // (e.g. EMAIL_DOMAIN_NOT_ALLOWED); fall back to the generic code.
+        code: typeof err.details === "string" ? err.details : err.code,
+        message: err.message,
+        ...(err.details && typeof err.details !== "string" ? { details: err.details } : {}),
+      },
     });
     return;
   }

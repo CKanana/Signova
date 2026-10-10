@@ -8,6 +8,14 @@ export async function getOrganization(orgId: string | Types.ObjectId) {
   return org;
 }
 
+/**
+ * Active organizations for the public registration dropdown.
+ * Exposes ONLY id + name — never colors, policy, or any other config.
+ */
+export async function listActiveOrganizations() {
+  return Organization.find({ isActive: true }).select("_id name").sort({ name: 1 });
+}
+
 export async function updateOrganization(
   orgId: string | Types.ObjectId,
   updates: Partial<{

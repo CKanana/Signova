@@ -31,6 +31,19 @@ const envSchema = z.object({
   // Optional: pin the organization served to mobile kiosks when more than
   // one organization exists in the database. Falls back to the first active org.
   SIGNOVA_ORG_ID: z.string().optional(),
+
+  // --- Password-reset email (Gmail SMTP) — all optional at boot ---
+  // If unconfigured, the server runs normally but cannot deliver reset
+  // emails; the forgot-password endpoint fails safely without them.
+  SMTP_HOST: z.string().default("smtp.gmail.com"),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_APP_PASSWORD: z.string().optional(),
+  // Base URL of the staff web app, used to build reset links. MUST be a
+  // trusted value (never derived from the request Host header).
+  PASSWORD_RESET_BASE_URL: z.string().default("http://localhost:5173"),
+  // Reset-token lifetime in minutes (target: 15).
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
 });
 
 function loadEnv() {
@@ -66,4 +79,12 @@ export const config = {
   appName: env.APP_NAME,
   lowConfidenceThreshold: env.TRANSLATION_LOW_CONFIDENCE,
   orgId: env.SIGNOVA_ORG_ID,
+  smtp: {
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    user: env.SMTP_USER,
+    appPassword: env.SMTP_APP_PASSWORD,
+  },
+  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.replace(/\/+$/, ""),
+  passwordResetTtlMinutes: env.PASSWORD_RESET_TTL_MINUTES,
 } as const;

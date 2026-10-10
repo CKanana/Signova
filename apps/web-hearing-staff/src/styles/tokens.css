@@ -1,0 +1,120 @@
+/*
+ * Signova staff web design system.
+ *
+ * A pure CSS-variable token layer consumed by every staff component. The
+ * existing Signova tokens (shared/constants/theme.ts) are the source of
+ * truth and are NOT changed — this file only ADDS the extended brand
+ * palette documented in the Signova Brand Identity Styleboard so the
+ * staff dashboard belongs to the same product family as the mobile app.
+ *
+ * Token ownership: mobile app and staff app share the same token names so a
+ * future org-driven theming (Organization.colors.primary/background) can
+ * override both surfaces from one place.
+ */
+:root {
+  /* ---- Core Signova palette (mirrors shared/constants/theme.ts) ---- */
+  --signova-primary: #5b2a86;
+  --signova-on-primary: #ffffff;
+  --signova-background: #fff8dc;
+  --signova-surface: #ffffff;
+  --signova-text: #241f27;
+  --signova-muted-text: #68636b;
+  --signova-border: #ded8c8;
+  --signova-success: #1b7548;
+  --signova-warning: #965300;
+  --signova-danger: #b3261e;
+  --signova-focus: #315ea8;
+
+  /* ---- Extended brand tokens (Styleboard: additive, non-breaking) ---- */
+  --signova-royal: #6a3db8;
+  --signova-lavender: #c9b4ff;
+  --signova-deep: #4b3b6b;
+  --signova-dark: #1e1b2e;
+  --signova-corn: #f8eed4;
+  --signova-selected: #f5effa;
+  --signova-lavender-chip: #f0e8f6;
+  --signova-success-chip: #e8f3e9;
+  --signova-warning-chip: #fdf0dc;
+  --signova-danger-chip: #fbe9e7;
+
+  /* ---- Spacing scale (matches mobile theme.spacing) ---- */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* ---- Radii (matches mobile theme.radii) ---- */
+  --radius-control: 12px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
+
+  /* ---- Typography ---- */
+  --font-heading: "Manrope", "Segoe UI", sans-serif;
+  --font-body: "DM Sans", "Segoe UI", sans-serif;
+
+  /* ---- Elevation (soft, warm) ---- */
+  --shadow-card: 0 3px 9px rgba(38, 27, 48, 0.06);
+  --shadow-card-selected: 0 6px 16px rgba(91, 42, 134, 0.16);
+  --shadow-panel: 0 10px 30px rgba(38, 27, 48, 0.08);
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--signova-text);
+  background: var(--signova-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Accessibility primitives ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Visible, consistent focus ring for every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--signova-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
