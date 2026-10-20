@@ -27,17 +27,42 @@ export async function issueRefreshToken(userId: string, ttlDays: number): Promis
   return raw;
 }
 
-/** Validate + rotate a refresh token. Returns the associated userId. */
+/** Validate + rotate a refresh token atomically. Returns the associated userId. */
 export async function rotateRefreshToken(rawToken: string): Promise<string> {
+  const { recordAudit } = await import("./auditService.js");
   const tokenHash = hashToken(rawToken);
-  const existing = await RefreshToken.findOne({ tokenHash });
-  if (!existing || existing.revokedAt || existing.expiresAt < new Date()) {
-    throw new UnauthorizedError("Invalid refresh token", "REFRESH_INVALID");
+  const now = new Date();
+
+  // Atomic claim: only succeeds when the token is unused and unexpired.
+  const claimed = await RefreshToken.findOneAndUpdate(
+    { tokenHash, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+    { $set: { revokedAt: now } },
+    { new: true },
+  );
+
+  if (claimed) {
+    return claimed.user.toString();
   }
-  // Revoke the used token (rotation).
-  existing.revokedAt = new Date();
-  await existing.save();
-  return existing.user.toString();
+
+  // Not claimed: check if this token was previously revoked (Reuse Detection).
+  const existing = await RefreshToken.findOne({ tokenHash });
+  if (existing && existing.revokedAt) {
+    // A revoked refresh token was presented — this indicates a replay or token-theft breach.
+    // Invalidate the entire active session family for this user immediately.
+    await revokeAllRefreshTokens(existing.user.toString());
+    await recordAudit({
+      action: "REFRESH_TOKEN_REUSE",
+      actor: existing.user,
+      target: existing.user.toString(),
+      meta: { tokenHash: tokenHash.slice(0, 16) },
+    });
+    throw new UnauthorizedError(
+      "Compromised session token detected. All sessions have been revoked.",
+      "REFRESH_TOKEN_REUSED",
+    );
+  }
+
+  throw new UnauthorizedError("Invalid refresh token", "REFRESH_INVALID");
 }
 
 /** Revoke a specific refresh token (logout). */

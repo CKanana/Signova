@@ -80,11 +80,11 @@ export const config = {
   lowConfidenceThreshold: env.TRANSLATION_LOW_CONFIDENCE,
   orgId: env.SIGNOVA_ORG_ID,
   smtp: {
-    host: env.SMTP_HOST,
+    host: env.SMTP_HOST.trim(),
     port: env.SMTP_PORT,
-    user: env.SMTP_USER,
-    appPassword: env.SMTP_APP_PASSWORD,
+    user: env.SMTP_USER?.trim(),
+    appPassword: env.SMTP_APP_PASSWORD ? env.SMTP_APP_PASSWORD.replace(/\s+/g, "") : undefined,
   },
-  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.replace(/\/+$/, ""),
+  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.trim().replace(/\/+$/, ""),
   passwordResetTtlMinutes: env.PASSWORD_RESET_TTL_MINUTES,
 } as const;

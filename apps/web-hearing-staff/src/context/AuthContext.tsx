@@ -25,6 +25,7 @@ export type LoginStage =
   | { kind: "twoFactor"; challengeToken: string }
   | { kind: "enroll"; challengeToken: string }
   | { kind: "register" }
+  | { kind: "pending_approval" }
   | { kind: "forgot" }
   | { kind: "reset"; token: string };
 
@@ -297,9 +298,9 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       setLoginError(null);
       try {
         const result = await api.register(name, organizationId, email, password);
-        // The backend always returns mfa_enroll_required for a fresh
-        // account — straight into the QR enrollment step.
-        if (result.status === "mfa_enroll_required" && result.challengeToken) {
+        if (result.status === "pending_approval") {
+          setLoginStage({ kind: "pending_approval" });
+        } else if (result.status === "mfa_enroll_required" && result.challengeToken) {
           setLoginStage({ kind: "enroll", challengeToken: result.challengeToken });
         } else if (result.status === "authenticated") {
           adoptSession(result);
@@ -436,6 +437,8 @@ function describeAuthError(err: unknown): string {
         return "This account is temporarily locked after too many failed attempts. Try again later.";
       case "ACCOUNT_INACTIVE":
         return "This account has been deactivated. Contact your administrator.";
+      case "ACCOUNT_PENDING_APPROVAL":
+        return "Your account is pending administrator approval. You will be able to sign in once an administrator approves your account.";
       case "OTP_INVALID":
         return "That authentication code is not valid. Check your authenticator app and try again.";
       case "CHALLENGE_INVALID":

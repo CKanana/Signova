@@ -34,11 +34,12 @@ export interface StaffUser {
 }
 
 export interface AuthResult {
-  status: "2fa_required" | "mfa_enroll_required" | "authenticated";
+  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval";
   challengeToken?: string;
   accessToken?: string;
   refreshToken?: string;
   user?: StaffUser;
+  message?: string;
 }
 
 /**

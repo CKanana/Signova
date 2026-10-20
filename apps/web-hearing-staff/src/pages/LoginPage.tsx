@@ -81,9 +81,19 @@ export function LoginScreen() {
   const showTwoFactor = loginStage?.kind === "twoFactor";
   const showEnroll = loginStage?.kind === "enroll";
   const showSignup = loginStage?.kind === "register";
+  const showPendingApproval = loginStage?.kind === "pending_approval";
   const showForgotScreen = loginStage?.kind === "forgot";
   const showResetScreen = loginStage?.kind === "reset";
   const resetSent = loginStage?.kind === "reset" && loginStage.token === "__sent__";
+
+  function handleCancelLogin() {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname === "/reset-password" ? "/" : window.location.pathname);
+    } catch {
+      /* ignore */
+    }
+    cancelLogin();
+  }
 
   useEffect(() => {
     if (showSignup) void loadOrganizations();
@@ -149,6 +159,11 @@ export function LoginScreen() {
       return;
     }
     await confirmReset(resetPassword);
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname === "/reset-password" ? "/" : window.location.pathname);
+    } catch {
+      /* ignore */
+    }
     // On success the context returns to the credentials stage; clear fields.
     setResetPassword("");
     setResetConfirm("");
@@ -327,7 +342,7 @@ export function LoginScreen() {
                     instructions will be sent. The link expires in 15 minutes.
                   </p>
                 </div>
-                <Button variant="ghost" block onClick={cancelLogin}>
+                <Button variant="ghost" block onClick={handleCancelLogin}>
                   Back to sign in
                 </Button>
               </div>
@@ -387,7 +402,7 @@ export function LoginScreen() {
                 <Button type="submit" block loading={isSubmitting}>
                   Reset password
                 </Button>
-                <Button variant="ghost" block onClick={cancelLogin}>
+                <Button variant="ghost" block onClick={handleCancelLogin}>
                   Back to sign in
                 </Button>
               </form>
@@ -519,10 +534,27 @@ export function LoginScreen() {
               <Button type="submit" block loading={isSubmitting}>
                 Create account
               </Button>
-              <Button variant="ghost" block onClick={cancelLogin}>
+              <Button variant="ghost" block onClick={handleCancelLogin}>
                 Back to sign in
               </Button>
             </form>
+          ) : null}
+
+          {showPendingApproval ? (
+            <div className="staff-form">
+              <div>
+                <div className="staff-eyebrow">Registration received</div>
+                <h1 className="staff-login__title">
+                  Pending approval
+                </h1>
+                <p className="staff-login__subtitle">
+                  Your staff account has been created. An administrator must approve your account before you can sign in and set up two-factor authentication.
+                </p>
+              </div>
+              <Button variant="ghost" block onClick={handleCancelLogin}>
+                Back to sign in
+              </Button>
+            </div>
           ) : null}
 
           {showTwoFactor ? (

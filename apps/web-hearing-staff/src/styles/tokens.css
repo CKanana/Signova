@@ -15,8 +15,10 @@
   /* ---- Core Signova palette (mirrors shared/constants/theme.ts) ---- */
   --signova-primary: #5b2a86;
   --signova-on-primary: #ffffff;
-  --signova-background: #fff8dc;
-  --signova-surface: #ffffff;
+  --signova-background: #f7f0e0;
+  /* Cards/panels use a warm corn-silk surface, not stark white, so the
+     dashboard stays in the purple/corn-silk Signova identity. */
+  --signova-surface: #fff9eb;
   --signova-text: #241f27;
   --signova-muted-text: #68636b;
   --signova-border: #ded8c8;

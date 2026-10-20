@@ -147,3 +147,21 @@ export function IconRefresh({ size = 16, className }: IconProps) {
     </svg>
   );
 }
+
+export function IconChevronDoubleLeft({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <polyline points="13 17 8 12 13 7" />
+      <polyline points="20 17 15 12 20 7" />
+    </svg>
+  );
+}
+
+export function IconChevronDoubleRight({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <polyline points="11 17 16 12 11 7" />
+      <polyline points="4 17 9 12 4 7" />
+    </svg>
+  );
+}

@@ -11,6 +11,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed/run.ts",
+    "staff:list-pending": "tsx src/scripts/manageStaff.ts list-pending",
+    "staff:approve": "tsx src/scripts/manageStaff.ts approve",
     "test": "node --test --import tsx test/**/*.test.ts"
   },
   "engines": {

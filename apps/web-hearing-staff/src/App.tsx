@@ -68,6 +68,7 @@ function Root() {
 
 function Workspace() {
   const [view, setView] = useState<View>("dashboard");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { pendingRequest, activeSessionId, view: sessionView } = useStaffWorkspace();
 
   const navigate = useCallback((next: View) => setView(next), []);
@@ -94,12 +95,14 @@ function Workspace() {
   }, [view]);
 
   return (
-    <div className="staff-shell">
+    <div className={`staff-shell${isSidebarCollapsed ? " staff-shell--collapsed" : ""}`}>
       <Sidebar
         current={view}
         onNavigate={navigate}
         hasActiveSession={hasActiveSession}
         hasPendingRequest={!!pendingRequest}
+        collapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
       />
       <div className="staff-main">
         <Topbar title={meta.title} subtitle={meta.subtitle} />

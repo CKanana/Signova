@@ -354,13 +354,14 @@ async function main() {
       passwordConfirmation: "Password123!",
     }),
   });
-  check("gmail registration returns 201 with enrollment challenge", reg.status === 201, JSON.stringify(reg.body));
-  check("register issues no access token (2FA still required)", !reg.body.accessToken);
+  check("gmail registration returns 201 with pending approval", reg.status === 201 && reg.body.status === "pending_approval", JSON.stringify(reg.body));
+  check("register issues no access token (pending approval)", !reg.body.accessToken);
 
   // Normalization: the padded, mixed-case email must be stored lowercase+trimmed.
   const regUser = await User.findOne({ organization: org!._id, email: "newstaff@gmail.com" });
   check("email normalized to lowercase and trimmed", !!regUser, "stored email not found as lowercase");
   check("registered account is STAFF (never ADMIN)", regUser?.role === "STAFF", `got ${regUser?.role}`);
+  check("registered account is initially inactive (pending approval)", regUser?.isActive === false);
 
   // Non-gmail domains rejected.
   for (const badEmail of ["user@strathmore.edu", "user@signova.test", "user@notgmail.com", "user@mail.gmail.com", "user@gmail.com.evil.net"]) {
@@ -413,12 +414,24 @@ async function main() {
   });
   check("duplicate email rejected (409)", regDup.status === 409, `got ${regDup.status}`);
 
-  // --- 2FA enrollment: no token before activation ---
+  // --- 2FA enrollment: unapproved account cannot log in; approved account enrolls ---
+  const unapprovedLogin = await j("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email: "newstaff@gmail.com", password: "Password123!" }),
+  });
+  check("unapproved staff account login rejected (401 ACCOUNT_PENDING_APPROVAL)", unapprovedLogin.status === 401 && unapprovedLogin.body.error?.code === "ACCOUNT_PENDING_APPROVAL", JSON.stringify(unapprovedLogin.body));
+
+  // Administrator approves the staff account via setStaffActive
+  const { setStaffActive } = await import("../src/services/staffService.js");
+  await setStaffActive(org!._id, regUser!._id.toString(), true, {} as any);
+  const approvedUser = await User.findById(regUser!._id);
+  check("staff account approved by administrator is now active", approvedUser?.isActive === true);
+
   const regLogin = await j("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email: "newstaff@gmail.com", password: "Password123!" }),
   });
-  check("registered account login requires 2FA enrollment", regLogin.status === 200 && regLogin.body.status === "mfa_enroll_required", JSON.stringify(regLogin.body));
+  check("registered account login requires 2FA enrollment once approved", regLogin.status === 200 && regLogin.body.status === "mfa_enroll_required", JSON.stringify(regLogin.body));
   check("login issues no access token before 2FA", !regLogin.body.accessToken);
 
   // The MFA challenge must not authorize normal staff API operations.
@@ -487,17 +500,36 @@ async function main() {
   });
   check("invalid TOTP on login rejected", invalid.status === 401, `got ${invalid.status}`);
 
-  // --- Refresh-token rotation + logout revocation ---
+  // --- Refresh-token rotation + reuse detection (family revocation) ---
   // regActive is the session issued at enrollment activation (a clean pair).
   const refresh1 = regActive.body.refreshToken;
-  const rotated = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: refresh1 }) });
-  check("refresh rotation issues a new pair", rotated.status === 200 && !!rotated.body.accessToken && !!rotated.body.refreshToken, JSON.stringify(rotated.body));
-  check("rotated refresh token differs from the original", rotated.body.refreshToken !== refresh1);
-  const reuseOld = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: refresh1 }) });
-  check("old refresh token is revoked after rotation (401)", reuseOld.status === 401, `got ${reuseOld.status}`);
-  const logout = await j("/api/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken: rotated.body.refreshToken }) });
+  const rotated1 = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: refresh1 }) });
+  check("refresh rotation issues a new pair", rotated1.status === 200 && !!rotated1.body.accessToken && !!rotated1.body.refreshToken, JSON.stringify(rotated1.body));
+  check("rotated refresh token differs from the original", rotated1.body.refreshToken !== refresh1);
+
+  // Normal second rotation works cleanly (token refresh2 -> refresh3).
+  const refresh2 = rotated1.body.refreshToken;
+  const rotated2 = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: refresh2 }) });
+  check("subsequent normal refresh rotation succeeds", rotated2.status === 200 && !!rotated2.body.refreshToken);
+  const refresh3 = rotated2.body.refreshToken;
+
+  // Reuse attack: client presents refresh1 or refresh2 (both already rotated/revoked).
+  const reuseAttempt = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: refresh1 }) });
+  check("reused refresh token rejected with 401", reuseAttempt.status === 401, `got ${reuseAttempt.status}`);
+  check("token reuse detection triggered REFRESH_TOKEN_REUSED code", reuseAttempt.body.error?.code === "REFRESH_TOKEN_REUSED", JSON.stringify(reuseAttempt.body));
+
+  // Breach containment: refresh3 was active, but reuse detection must have revoked ALL tokens for this user.
+  const activeTokensAfterBreach = await RefreshToken.countDocuments({ user: regUser!._id, revokedAt: { $exists: false } });
+  check("token reuse invalidated all active tokens in the session family", activeTokensAfterBreach === 0, `got ${activeTokensAfterBreach}`);
+  const postBreachRefresh = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: refresh3 }) });
+  check("compromised family active token is now rejected (401)", postBreachRefresh.status === 401, `got ${postBreachRefresh.status}`);
+
+  // Normal logout
+  const tokenService = await import("../src/services/tokenService.js");
+  const logoutToken = await tokenService.issueRefreshToken(regUser!._id.toString(), 7);
+  const logout = await j("/api/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken: logoutToken }) });
   check("logout succeeds", logout.status === 200, `got ${logout.status}`);
-  const afterLogout = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: rotated.body.refreshToken }) });
+  const afterLogout = await j("/api/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken: logoutToken }) });
   check("refresh token unusable after logout (401)", afterLogout.status === 401, `got ${afterLogout.status}`);
 
   // --- Database storage guarantees ---

@@ -119,18 +119,56 @@ function signInUrl(): string {
 /**
  * Build the new-staff welcome email (plain + HTML).
  *
- * Sent when a staff member self-registers. It confirms the account was
- * created and points them to sign in — it contains NO password and NO token
- * (2FA enrollment happens in the browser after the first sign-in).
+ * Sent when a staff member self-registers. Since new registrations require
+ * administrator approval before access is granted, the email confirms that the
+ * registration was received and is pending review.
  */
-export function buildWelcomeEmail(name: string): { subject: string; text: string; html: string } {
+export function buildWelcomeEmail(
+  name: string,
+  isPendingApproval = true,
+): { subject: string; text: string; html: string } {
   const firstName = name.trim().split(" ")[0] || "there";
   const url = signInUrl();
+
+  if (isPendingApproval) {
+    const subject = "Signova registration received — pending approval";
+    const text = [
+      `Hi ${firstName},`,
+      "",
+      "Your Signova staff registration has been received and is pending administrator approval.",
+      "",
+      "Once an administrator approves your account, you will be able to sign in at:",
+      url,
+      "",
+      "On your first sign-in you'll set up two-factor authentication with an",
+      "authenticator app — this keeps your account secure.",
+      "",
+      "Signova support will never ask you to share your password.",
+    ].join("\n");
+    const html = `
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#241f27">
+  <h2 style="color:#5B2A86">Registration received</h2>
+  <p>Hi ${firstName},</p>
+  <p>Your Signova staff registration has been received and is pending administrator approval.</p>
+  <p>
+    Once an administrator approves your account, you will be able to sign in to your workspace.
+  </p>
+  <p style="font-size:13px;color:#68636b">
+    On your first sign-in you&apos;ll set up two-factor authentication with an
+    authenticator app — this keeps your account secure.
+  </p>
+  <p style="font-size:13px;color:#68636b">
+    Signova support will never ask you to share your password.
+  </p>
+</div>`.trim();
+    return { subject, text, html };
+  }
+
   const subject = "Welcome to Signova";
   const text = [
     `Hi ${firstName},`,
     "",
-    "Your Signova staff account has been created. Welcome aboard.",
+    "Your Signova staff account is active. Welcome aboard.",
     "",
     "Sign in to your workspace to get started:",
     url,
@@ -144,7 +182,7 @@ export function buildWelcomeEmail(name: string): { subject: string; text: string
 <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#241f27">
   <h2 style="color:#5B2A86">Welcome to Signova</h2>
   <p>Hi ${firstName},</p>
-  <p>Your Signova staff account has been created. Welcome aboard.</p>
+  <p>Your Signova staff account is active. Welcome aboard.</p>
   <p>
     <a href="${url}"
        style="display:inline-block;background:#5B2A86;color:#fff;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold">

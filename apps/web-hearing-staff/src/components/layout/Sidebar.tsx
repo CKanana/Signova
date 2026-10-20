@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
 import { useStaffWorkspace } from "../../context/StaffWorkspaceContext";
 import { useStaffAuth } from "../../context/AuthContext";
 import { Button } from "../ui/Button";
 import { Badge, tellerBadge } from "../ui/Badge";
 import {
+  IconChevronDoubleLeft,
+  IconChevronDoubleRight,
   IconDashboard,
   IconHistory,
   IconLogout,
@@ -24,6 +25,8 @@ interface SidebarProps {
   onNavigate: (view: StaffViewName) => void;
   hasActiveSession: boolean;
   hasPendingRequest: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 function initials(name: string): string {
@@ -41,21 +44,17 @@ const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administrator",
 };
 
-export function Sidebar({ current, onNavigate, hasActiveSession, hasPendingRequest }: SidebarProps) {
+export function Sidebar({
+  current,
+  onNavigate,
+  hasActiveSession,
+  hasPendingRequest,
+  collapsed,
+  onToggleCollapse,
+}: SidebarProps) {
   const { organization, user, assignedTellers, isSavingAvailability, setAvailability } =
     useStaffWorkspace();
   const { signOut } = useStaffAuth();
-
-  const [collapsed, setCollapsed] = useState(false);
-
-  // Track viewport so the CSS rail collapse stays in sync for the labels.
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 980px)");
-    const update = () => setCollapsed(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
 
   const navItems: Array<{ id: StaffViewName; label: string; icon: React.ReactNode }> = [
     { id: "dashboard", label: "Dashboard", icon: <IconDashboard /> },
@@ -67,9 +66,18 @@ export function Sidebar({ current, onNavigate, hasActiveSession, hasPendingReque
   const teller = assignedTellers[0];
 
   return (
-    <aside className="staff-sidebar" aria-label="Staff navigation">
+    <aside className={`staff-sidebar${collapsed ? " staff-sidebar--collapsed" : ""}`} aria-label="Staff navigation">
       <div className="staff-sidebar__brand">
         <img src={logoHorizontal} alt="Signova" className="staff-sidebar__logo" />
+        <button
+          type="button"
+          className="staff-sidebar__toggle"
+          onClick={onToggleCollapse}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? <IconChevronDoubleRight size={16} /> : <IconChevronDoubleLeft size={16} />}
+        </button>
       </div>
 
       {organization ? (
@@ -98,7 +106,7 @@ export function Sidebar({ current, onNavigate, hasActiveSession, hasPendingReque
               aria-current={current === item.id ? "page" : undefined}
             >
               <span className="staff-navitem__icon">{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="staff-navitem__label">{item.label}</span>
               {badgeCount ? (
                 <span className="staff-navitem__badge" aria-label="1 incoming request">
                   {badgeCount}
@@ -164,11 +172,9 @@ export function Sidebar({ current, onNavigate, hasActiveSession, hasPendingReque
 
         <Button variant="ghost" size="sm" block onClick={() => void signOut()}>
           <IconLogout />
-          Sign out
+          <span>Sign out</span>
         </Button>
       </div>
-
-      {collapsed ? null : null}
     </aside>
   );
 }

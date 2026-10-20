@@ -18,11 +18,12 @@ const LOCK_MINUTES = 15;
 const REFRESH_TTL_DAYS = 7;
 
 export interface AuthResult {
-  status: "2fa_required" | "mfa_enroll_required" | "authenticated";
+  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval";
   challengeToken?: string;
   accessToken?: string;
   refreshToken?: string;
   user?: PublicUser;
+  message?: string;
 }
 
 export interface PublicUser {
@@ -81,6 +82,12 @@ export async function login(email: string, password: string, req: Request): Prom
   }
 
   if (!user.isActive) {
+    if (!user.twoFactorEnabled) {
+      throw new UnauthorizedError(
+        "Your account is pending administrator approval. Please wait for an administrator to approve your account before signing in.",
+        "ACCOUNT_PENDING_APPROVAL",
+      );
+    }
     throw new UnauthorizedError("Account is deactivated", "ACCOUNT_INACTIVE");
   }
 
@@ -336,24 +343,27 @@ export async function registerStaff(
     name: input.name.trim(),
     email,
     passwordHash: await hashPassword(input.password),
+    isActive: false,
   });
 
-  const challengeToken = signChallengeToken(user._id.toString(), "mfa_enroll");
   await recordAudit({
     action: "STAFF_REGISTER",
     actor: user._id,
     organization: org._id,
     target: user._id.toString(),
+    meta: { status: "pending_approval" },
     req,
   });
 
-  // Send a welcome email. Best-effort: a mail failure must never break
-  // registration, so the error is swallowed (mailService already logs it
-  // redacted) and the account is still created.
-  const welcome = buildWelcomeEmail(user.name);
+  // Send a welcome email explaining pending approval. Best-effort: a mail
+  // failure must never break registration.
+  const welcome = buildWelcomeEmail(user.name, true);
   await sendMail({ to: user.email!, subject: welcome.subject, text: welcome.text, html: welcome.html });
 
-  return { status: "mfa_enroll_required", challengeToken };
+  return {
+    status: "pending_approval",
+    message: "Registration received successfully. Your account is pending administrator approval before you can sign in.",
+  };
 }
 
 /** Normalize an email for storage and lookup: trimmed + lowercased. */

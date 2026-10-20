@@ -22,7 +22,8 @@ export type AuditAction =
   | "PASSWORD_RESET_FAILED"
   | "ORG_UPDATE"
   | "TELLER_CREATE"
-  | "TELLER_UPDATE";
+  | "TELLER_UPDATE"
+  | "REFRESH_TOKEN_REUSE";
 
 interface AuditInput {
   action: AuditAction;
