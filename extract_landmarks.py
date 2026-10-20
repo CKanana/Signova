@@ -1,20 +1,34 @@
 """
-extract_landmarks.py  (Hands-only version, matching approved proposal Section 3.2.2)
+extract_landmarks.py  (Both-hands version)
 
-Extracts 21 three-dimensional hand keypoints per frame using MediaPipe's
-HandLandmarker (Tasks API -- the legacy mp.solutions.hands module is no
-longer functional on current package builds, see notes in earlier project
-history). Only the single highest-confidence hand per frame is kept, giving
-a 63-value feature vector per frame (21 keypoints x 3 coordinates), matching
-the proposal's specified input representation exactly.
+Extracts 21 three-dimensional keypoints for EACH detected hand per frame
+using MediaPipe's HandLandmarker (Tasks API). Both left and right hands are
+kept in fixed left/right slots -- 63 values each -- giving a 126-value
+feature vector per frame (21 keypoints x 3 coordinates x 2 hands).
 
-Frames with no detected hand are zero-padded (per proposal Section 3.2.2).
+This replaces the earlier single-hand (63-dim, best-confidence-only)
+extraction. Single-handed classification was dropping information for any
+two-handed sign, which was identified as the largest accuracy bottleneck --
+see project notes on the single-hand vs. both-hands accuracy comparison.
+
+A hand that isn't detected in a given frame (either because the signer
+only used one hand for that sign, or MediaPipe missed a detection) gets its
+63-value slot zero-filled. A frame with NEITHER hand detected is therefore
+an all-zero 126-vector, which is what the Masking(mask_value=0.0) layer in
+model.py checks for -- masking behavior is unchanged, it just now checks
+across both hand slots instead of one.
 
 Usage:
     python extract_landmarks.py \
         --manifest manifest.csv \
-        --out_dir landmarks/ \
+        --out_dir landmarks_v2/ \
         --max_frames 60
+
+IMPORTANT: point --out_dir at a NEW directory, not the old single-hand one.
+This script skips any video whose output .npy already exists (for resumable
+runs) -- reusing the old directory would silently mix old 63-dim single-hand
+arrays with new 126-dim both-hands arrays, which will break downstream
+shape assumptions in dataset.py.
 """
 
 import argparse
@@ -30,8 +44,9 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-HAND_N = 21  # keypoints per hand
-FEATURE_DIM = HAND_N * 3  # 63
+HAND_N = 21                        # keypoints per hand
+SINGLE_HAND_DIM = HAND_N * 3        # 63
+FEATURE_DIM = SINGLE_HAND_DIM * 2   # 126 (left + right)
 
 MODEL_DIR = "mp_task_models"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
@@ -52,7 +67,7 @@ def build_landmarker():
         vision.HandLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=model_path),
             running_mode=vision.RunningMode.IMAGE,
-            num_hands=2,  # detect up to 2, we keep only the best-scoring one
+            num_hands=2,  # now keeping both, not just the best-scoring one
         )
     )
 
@@ -60,20 +75,22 @@ def build_landmarker():
 def extract_frame_landmarks(hand_landmarker, mp_image) -> np.ndarray:
     result = hand_landmarker.detect(mp_image)
 
-    if not result.hand_landmarks:
-        return np.zeros(FEATURE_DIM, dtype=np.float32)
+    left = np.zeros(SINGLE_HAND_DIM, dtype=np.float32)
+    right = np.zeros(SINGLE_HAND_DIM, dtype=np.float32)
 
-    # Keep only the single highest-confidence hand (proposal specifies one
-    # hand, 21 keypoints -- not left+right separately)
-    best_idx = 0
-    if len(result.handedness) > 1:
-        scores = [h[0].score for h in result.handedness]
-        best_idx = int(np.argmax(scores))
+    for hand_landmarks, handedness in zip(result.hand_landmarks, result.handedness):
+        label = handedness[0].category_name  # "Left" or "Right"
+        vec = np.array(
+            [[lm.x, lm.y, lm.z] for lm in hand_landmarks], dtype=np.float32
+        ).flatten()
+        if label == "Left":
+            left = vec
+        elif label == "Right":
+            right = vec
+        # if MediaPipe ever returns an unexpected label, that hand is simply
+        # dropped for this frame rather than crashing the run
 
-    landmarks = result.hand_landmarks[best_idx]
-    return np.array(
-        [[lm.x, lm.y, lm.z] for lm in landmarks], dtype=np.float32
-    ).flatten()
+    return np.concatenate([left, right])  # (126,)
 
 
 def process_video(video_path, frame_start, frame_end, max_frames, hand_landmarker):
@@ -136,7 +153,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", required=True)
-    parser.add_argument("--out_dir", default="landmarks")
+    parser.add_argument("--out_dir", default="landmarks_v2")
     parser.add_argument("--max_frames", type=int, default=60)
     args = parser.parse_args()
     main(args)
