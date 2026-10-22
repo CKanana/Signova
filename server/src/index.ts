@@ -17,6 +17,7 @@ import translationRoutes from "./routes/translation.js";
 import kioskRoutes from "./routes/kiosk.js";
 import staffRoutes from "./routes/staff.js";
 import healthRoutes from "./routes/health.js";
+import adminRouter from "./admin/index.js";
 
 async function main() {
   await connectDatabase();
@@ -43,6 +44,8 @@ async function main() {
   app.use("/api/sessions/:id/messages", messageRoutes);
   app.use("/api/kiosk", kioskRoutes);
   app.use("/api/staff", staffRoutes);
+  // Admin API surface (org-scoped; all routes enforce RBAC server-side).
+  app.use("/api/admin", adminRouter);
 
   // 404 + centralized error handling
   app.use(notFoundHandler);

@@ -1,20 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, ApiError, bindAuthAccessors, type StaffUser } from "../services/api";
+import { api, ApiError, type StaffUser, bindAuthAccessors } from "../services/api";
 import { disconnectStaffSocket } from "../services/socket";
-
-/**
- * Staff authentication state.
- *
- * Implements the Phase 1 auth system exactly as designed — email + password
- * (step 1), TOTP 2FA verification (step 2), rotating access/refresh token
- * pair, transparent refresh on 401, and a hard role gate: only STAFF or
- * ADMIN may hold a staff session. 2FA is never bypassed; no staff data is
- * reachable without a token the backend has signed.
- *
- * Tokens live in sessionStorage (tab-scoped, cleared on browser close) —
- * this is an institutional shared-workstation product, so we deliberately
- * do not persist sessions to localStorage across restarts.
- */
 
 const ACCESS_KEY = "signova.staff.accessToken";
 const REFRESH_KEY = "signova.staff.refreshToken";
@@ -24,13 +10,12 @@ export type LoginStage =
   | { kind: "credentials" }
   | { kind: "twoFactor"; challengeToken: string }
   | { kind: "enroll"; challengeToken: string }
-  | { kind: "register" }
   | { kind: "pending_approval" }
   | { kind: "forgot" }
-  | { kind: "reset"; token: string };
+  | { kind: "reset"; token: string }
+  | { kind: "staff-setup"; challengeToken: string };
 
 export interface StaffAuthValue {
-  /** null while the boot check runs. */
   user: StaffUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -45,20 +30,15 @@ export interface StaffAuthValue {
   confirmEnrollment: (code: string) => Promise<void>;
   cancelLogin: () => void;
   signOut: () => Promise<void>;
-  /** Open the create-an-account step. */
-  showRegister: () => void;
-  /** Register a new staff account, then move into 2FA enrollment. */
-  register: (name: string, organizationId: string, email: string, password: string) => Promise<void>;
-  /** Open the forgot-password step. */
   showForgot: () => void;
-  /** Request a reset link (always shows the generic confirmation). */
   requestReset: (email: string) => Promise<void>;
-  /** Set a new password using the reset token from the URL. */
   confirmReset: (password: string) => Promise<void>;
-  /** Open the reset form from a URL ?token=. */
   openResetFromUrl: (token: string) => void;
-  /** Attempt a silent refresh; returns true when a new pair was obtained. */
   tryRefresh: () => Promise<boolean>;
+  resendReset: (email: string) => Promise<void>;
+  startStaffSetup: (token: string, password: string) => Promise<void>;
+  confirmStaffSetup: (code: string) => Promise<void>;
+  cancelStaffSetup: () => void;
 }
 
 const StaffAuthContext = createContext<StaffAuthValue | null>(null);
@@ -76,7 +56,7 @@ function writeSession(key: string, value: string | null): void {
     if (value === null) window.sessionStorage.removeItem(key);
     else window.sessionStorage.setItem(key, value);
   } catch {
-    /* storage unavailable (private mode) — session simply won't survive reload */
+    /* storage unavailable */
   }
 }
 
@@ -120,7 +100,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     disconnectStaffSocket();
   }, [storeUser]);
 
-  /** Accept a completed login result, enforcing the staff role gate. */
   const adoptSession = useCallback(
     (result: { accessToken?: string; refreshToken?: string; user?: StaffUser }) => {
       const nextUser = result.user;
@@ -128,7 +107,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
         throw new Error("Sign-in did not return a session.");
       }
       if (nextUser.role !== "STAFF" && nextUser.role !== "ADMIN") {
-        // A Deaf-user device token must never open the staff dashboard.
         throw new Error("This account does not have staff access.");
       }
       storePair(result.accessToken, result.refreshToken);
@@ -142,7 +120,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const tryRefresh = useCallback(async (): Promise<boolean> => {
     const token = refreshToken.current;
     if (!token) return false;
-    // Single-flight: concurrent 401s share one refresh call.
     if (!refreshing.current) {
       refreshing.current = (async () => {
         try {
@@ -160,7 +137,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     return refreshing.current;
   }, [dropSession, storePair]);
 
-  // Bind the API client to the token accessors above.
   useEffect(() => {
     bindAuthAccessors({
       getAccessToken: () => accessToken.current,
@@ -168,7 +144,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     });
   }, [tryRefresh]);
 
-  /** Boot: if a pair survives in this tab, validate it with /auth/me. */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -190,7 +165,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
         storeUser(me);
       } catch {
         if (cancelled) return;
-        // Expired pair: one silent refresh before giving up.
         const refreshed = await tryRefresh();
         if (!refreshed || cancelled) return;
         try {
@@ -286,36 +260,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setEnrollment(null);
   }, []);
 
-  const showRegister = useCallback(() => {
-    setLoginStage({ kind: "register" });
-    setLoginError(null);
-    setEnrollment(null);
-  }, []);
-
-  const register = useCallback(
-    async (name: string, organizationId: string, email: string, password: string) => {
-      setIsSubmitting(true);
-      setLoginError(null);
-      try {
-        const result = await api.register(name, organizationId, email, password);
-        if (result.status === "pending_approval") {
-          setLoginStage({ kind: "pending_approval" });
-        } else if (result.status === "mfa_enroll_required" && result.challengeToken) {
-          setLoginStage({ kind: "enroll", challengeToken: result.challengeToken });
-        } else if (result.status === "authenticated") {
-          adoptSession(result);
-        } else {
-          setLoginError("Unexpected response from the server.");
-        }
-      } catch (err) {
-        setLoginError(describeAuthError(err));
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [adoptSession],
-  );
-
   const showForgot = useCallback(() => {
     setLoginStage({ kind: "forgot" });
     setLoginError(null);
@@ -327,8 +271,6 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setLoginError(null);
     try {
       await api.forgotPassword(email.trim());
-      // Success is always shown — the backend returns the same generic
-      // message whether or not the account exists. No enumeration.
       setLoginStage({ kind: "reset", token: "__sent__" });
     } catch (err) {
       setLoginError(describeAuthError(err));
@@ -338,15 +280,13 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const confirmReset = useCallback(async (password: string) => {
-    // The token lives in the stage; guarded below.
+    if (loginStage?.kind !== "reset" || loginStage.token === "__sent__") {
+      throw new Error("No active password-reset session.");
+    }
     setIsSubmitting(true);
     setLoginError(null);
     try {
-      if (loginStage?.kind !== "reset" || loginStage.token === "__sent__") {
-        throw new Error("No active password-reset session.");
-      }
       await api.resetPassword(loginStage.token, password);
-      // No session is issued — send the user back to sign in.
       setLoginStage({ kind: "credentials" });
       setLoginError(null);
     } catch (err) {
@@ -356,7 +296,22 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loginStage]);
 
-  /** Called by App when the URL carries a ?token= — opens the reset form. */
+  const resendReset = useCallback(async (targetEmail: string) => {
+    if (!targetEmail.trim()) {
+      setLoginError("Enter your work email address.");
+      return;
+    }
+    setIsSubmitting(true);
+    setLoginError(null);
+    try {
+      await api.resendPasswordReset(targetEmail.trim());
+    } catch (err) {
+      setLoginError(describeAuthError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
   const openResetFromUrl = useCallback((token: string) => {
     setLoginStage({ kind: "reset", token });
     setLoginError(null);
@@ -368,56 +323,96 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     try {
       if (token) await api.logout(token);
     } catch {
-      /* server-side revoke failed — local teardown still proceeds */
+      /* server-side revoke failed */
     }
     dropSession();
   }, [dropSession]);
 
-  const value = useMemo<StaffAuthValue>(
-    () => ({
-      user,
-      isAuthenticated: !!user,
-      isLoading,
-      loginStage,
-      loginError,
-      isSubmitting,
-      enrollment,
-      signIn,
-      verifyCode,
-      beginEnrollment,
-      confirmEnrollment,
-      cancelLogin,
-      signOut,
-      showRegister,
-      register,
-      showForgot,
-      requestReset,
-      confirmReset,
-      openResetFromUrl,
-      tryRefresh,
-    }),
-    [
-      user,
-      isLoading,
-      loginStage,
-      loginError,
-      isSubmitting,
-      enrollment,
-      signIn,
-      verifyCode,
-      beginEnrollment,
-      confirmEnrollment,
-      cancelLogin,
-      signOut,
-      showRegister,
-      register,
-      showForgot,
-      requestReset,
-      confirmReset,
-      openResetFromUrl,
-      tryRefresh,
-    ],
-  );
+  const startStaffSetup = useCallback(async (token: string, password: string) => {
+    setIsSubmitting(true);
+    setLoginError(null);
+    try {
+      const res = await (api as any).staffSetupAccept(token, password);
+      if (res?.status === "mfa_enroll_required" && res.challengeToken) {
+        await (api as any).staffSetupEnrollStart(res.challengeToken);
+        setLoginStage({ kind: "staff-setup", challengeToken: res.challengeToken });
+      }
+    } catch (err) {
+      setLoginError(describeAuthError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
+  const confirmStaffSetup = useCallback(async (code: string) => {
+    if (loginStage?.kind !== "staff-setup") return;
+    setIsSubmitting(true);
+    setLoginError(null);
+    try {
+      const challengeToken = (loginStage as any).challengeToken;
+      const result = await (api as any).staffSetupEnrollActivate(challengeToken, code);
+      if (result?.accessToken && result?.refreshToken && result?.user) {
+        adoptSession(result);
+      }
+    } catch (err) {
+      setLoginError(describeAuthError(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [adoptSession, loginStage]);
+
+  const cancelStaffSetup = useCallback(() => {
+    setLoginStage(null);
+    setLoginError(null);
+    setEnrollment(null);
+  }, []);
+
+  const value = useMemo<StaffAuthValue>(() => ({
+    user,
+    isAuthenticated: !!user,
+    isLoading,
+    loginStage,
+    loginError,
+    isSubmitting,
+    enrollment,
+    signIn,
+    verifyCode,
+    beginEnrollment,
+    confirmEnrollment,
+    cancelLogin,
+    signOut,
+    showForgot,
+    requestReset,
+    confirmReset,
+    resendReset,
+    openResetFromUrl,
+    tryRefresh,
+    startStaffSetup,
+    confirmStaffSetup,
+    cancelStaffSetup,
+  }), [
+    user,
+    isLoading,
+    loginStage,
+    loginError,
+    isSubmitting,
+    enrollment,
+    signIn,
+    verifyCode,
+    beginEnrollment,
+    confirmEnrollment,
+    cancelLogin,
+    signOut,
+    showForgot,
+    requestReset,
+    confirmReset,
+    resendReset,
+    openResetFromUrl,
+    tryRefresh,
+    startStaffSetup,
+    confirmStaffSetup,
+    cancelStaffSetup,
+  ]);
 
   return <StaffAuthContext.Provider value={value}>{children}</StaffAuthContext.Provider>;
 }

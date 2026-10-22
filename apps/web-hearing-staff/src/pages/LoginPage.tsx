@@ -1,26 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { AuthLayout } from "../../../../shared/web-login/src/AuthLayout";
 import { useStaffAuth } from "../context/AuthContext";
-import { api } from "../services/api";
 import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/States";
 import { IconEye, IconMessage, IconShield } from "../components/ui/Icons";
 import brandIcon from "../assets/brand/signova-mark-purple.png";
-import "../styles/login.css";
+import "../../../../shared/web-login/src/auth-layout.css";
 
-/**
- * Staff sign-in: email + password → TOTP 2FA → dashboard.
- *
- * The three possible backend outcomes of POST /api/auth/login are handled
- * exactly as the server defines them:
- *   2fa_required        → 6-digit code step
- *   mfa_enroll_required → mandatory first-time enrollment (QR + confirm)
- *   authenticated       → (never for staff accounts, but handled anyway)
- *
- * 2FA is never optional or bypassed — without a verified code there is no
- * access token, and without an access token the backend serves nothing.
- */
-
-function isEmail(value: string): boolean {
+function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
@@ -35,52 +22,31 @@ export function LoginScreen() {
     beginEnrollment,
     confirmEnrollment,
     cancelLogin,
-    showRegister,
-    register,
     showForgot,
     requestReset,
     confirmReset,
     openResetFromUrl,
+    resendReset,
   } = useStaffAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [organizationId, setOrganizationId] = useState("");
-  const [organizations, setOrganizations] = useState<Array<{ _id: string; name: string }>>([]);
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [signupPasswordVisible, setSignupPasswordVisible] = useState(false);
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [resetPassword, setResetPassword] = useState("");
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetVisible, setResetVisible] = useState(false);
   const [code, setCode] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // If the URL carries ?token= (a reset link), open the reset form directly.
-  // The token is read once and kept only in component state — never stored
-  // in localStorage/sessionStorage or logged.
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("token");
     if (token) openResetFromUrl(token);
   }, [openResetFromUrl]);
 
-  // Load the public organization list once, for the sign-up dropdown.
-  const loadOrganizations = useCallback(async () => {
-    try {
-      const { organizations: list } = await api.listPublicOrganizations();
-      setOrganizations(list);
-    } catch {
-      // The dropdown degrades gracefully; submitting still surfaces the error.
-      setOrganizations([]);
-    }
-  }, []);
-
-  const showCredentials = loginStage === null || loginStage.kind === "credentials";
+  const showCredentials =
+    loginStage === null || loginStage.kind === "credentials";
   const showTwoFactor = loginStage?.kind === "twoFactor";
   const showEnroll = loginStage?.kind === "enroll";
-  const showSignup = loginStage?.kind === "register";
   const showPendingApproval = loginStage?.kind === "pending_approval";
   const showForgotScreen = loginStage?.kind === "forgot";
   const showResetScreen = loginStage?.kind === "reset";
@@ -88,16 +54,18 @@ export function LoginScreen() {
 
   function handleCancelLogin() {
     try {
-      window.history.replaceState({}, document.title, window.location.pathname === "/reset-password" ? "/" : window.location.pathname);
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname === "/reset-password"
+          ? "/"
+          : window.location.pathname
+      );
     } catch {
       /* ignore */
     }
     cancelLogin();
   }
-
-  useEffect(() => {
-    if (showSignup) void loadOrganizations();
-  }, [showSignup, loadOrganizations]);
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -160,79 +128,48 @@ export function LoginScreen() {
     }
     await confirmReset(resetPassword);
     try {
-      window.history.replaceState({}, document.title, window.location.pathname === "/reset-password" ? "/" : window.location.pathname);
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname === "/reset-password"
+          ? "/"
+          : window.location.pathname
+      );
     } catch {
       /* ignore */
     }
-    // On success the context returns to the credentials stage; clear fields.
     setResetPassword("");
     setResetConfirm("");
-  }
-
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setLocalError(null);
-    if (name.trim().length < 2) {
-      setLocalError("Enter your full name.");
-      return;
-    }
-    if (!organizationId) {
-      setLocalError("Select your organization.");
-      return;
-    }
-    if (!isEmail(email)) {
-      setLocalError("Enter a valid email address.");
-      return;
-    }
-    if (password.length < 10) {
-      setLocalError("Choose a password of at least 10 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setLocalError("The passwords do not match.");
-      return;
-    }
-    await register(name.trim(), organizationId, email.trim(), password);
   }
 
   const error = localError ?? loginError;
 
   return (
-    <main className="staff-login">
-      <section className="staff-login__brand">
-        <header className="staff-login__brandmark">
-          <img src={brandIcon} alt="" className="staff-login__logo" />
-          <span className="staff-login__wordmark">Signova</span>
-        </header>
-        <div className="staff-login__intro">
-          <p className="staff-login__tagline">Sign Language. Real Connection.</p>
-          <h2 className="staff-login__headline">
-            Communication that brings people closer.
-          </h2>
-          <p className="staff-login__copy">
-            Receive requests from Deaf visitors, review translated messages, and respond in real time.
-          </p>
-        </div>
-        <div className="staff-login__illustration" aria-hidden="true">
+    <AuthLayout
+      eyebrow="Sign Language. Real Connection."
+      title="Communication that brings people closer."
+      subtitle="Receive requests from Deaf visitors, review translated messages, and respond in real time."
+      logo={<img src={brandIcon} alt="" className="staff-login__logo" />}
+      illustration={
+        <>
           <IconMessage size={68} className="staff-login__bubble staff-login__bubble--first" />
           <img src={brandIcon} alt="" />
           <IconMessage size={48} className="staff-login__bubble staff-login__bubble--second" />
-        </div>
-        <p className="staff-login__security">
+        </>
+      }
+      footer={
+        <>
           <IconShield size={18} />
           <span>Protected with two-factor authentication</span>
-        </p>
-      </section>
-
-      <section className="staff-login__panel">
-        <div className="staff-login__card">
+        </>
+      }
+      rightPanel={
+        <div>
           {showCredentials ? (
             <form className="staff-form" onSubmit={handleSignIn} noValidate>
               <div>
                 <div className="staff-eyebrow">Staff sign in</div>
-                <h1 className="staff-login__title">
-                  Welcome back
-                </h1>
+                <h1 className="staff-login__title">Welcome back</h1>
                 <p className="staff-login__subtitle">Sign in to your Signova workspace.</p>
               </div>
               {error ? <ErrorBanner message={error} /> : null}
@@ -285,12 +222,6 @@ export function LoginScreen() {
                   Forgot password?
                 </button>
               </p>
-              <p className="staff-login__switch">
-                Don&apos;t have an account?{" "}
-                <button type="button" className="staff-login__link" onClick={showRegister}>
-                  Create a staff account
-                </button>
-              </p>
             </form>
           ) : null}
 
@@ -298,12 +229,8 @@ export function LoginScreen() {
             <form className="staff-form" onSubmit={handleForgot} noValidate>
               <div>
                 <div className="staff-eyebrow">Password recovery</div>
-                <h1 className="staff-login__title">
-                  Reset your password
-                </h1>
-                <p className="staff-login__subtitle">
-                  Enter your staff email and we&apos;ll send you a reset link.
-                </p>
+                <h1 className="staff-login__title">Reset your password</h1>
+                <p className="staff-login__subtitle">Enter your staff email and we'll send you a reset link.</p>
               </div>
               {error ? <ErrorBanner message={error} /> : null}
               <div className="staff-field">
@@ -326,6 +253,16 @@ export function LoginScreen() {
               <Button variant="ghost" block onClick={cancelLogin}>
                 Back to sign in
               </Button>
+              <button
+                type="button"
+                className="staff-login__link"
+                onClick={async () => {
+                  setLocalError(null);
+                  await resendReset(email.trim());
+                }}
+              >
+                Resend link
+              </button>
             </form>
           ) : null}
 
@@ -334,9 +271,7 @@ export function LoginScreen() {
               <div className="staff-form">
                 <div>
                   <div className="staff-eyebrow">Check your email</div>
-                  <h1 className="staff-login__title">
-                    Reset link sent
-                  </h1>
+                  <h1 className="staff-login__title">Reset link sent</h1>
                   <p className="staff-login__subtitle">
                     If an eligible account exists for that email address, password-reset
                     instructions will be sent. The link expires in 15 minutes.
@@ -350,12 +285,8 @@ export function LoginScreen() {
               <form className="staff-form" onSubmit={handleReset} noValidate>
                 <div>
                   <div className="staff-eyebrow">Set a new password</div>
-                  <h1 className="staff-login__title">
-                    Choose a new password
-                  </h1>
-                  <p className="staff-login__subtitle">
-                    Enter a new password for your Signova staff account.
-                  </p>
+                  <h1 className="staff-login__title">Choose a new password</h1>
+                  <p className="staff-login__subtitle">Enter a new password for your Signova staff account.</p>
                 </div>
                 {error ? <ErrorBanner message={error} /> : null}
                 <div className="staff-field">
@@ -409,144 +340,11 @@ export function LoginScreen() {
             )
           ) : null}
 
-          {showSignup ? (
-            <form className="staff-form" onSubmit={handleRegister} noValidate>
-              <div>
-                <div className="staff-eyebrow">Create account</div>
-                <h1 className="staff-login__title">
-                  Join your organization
-                </h1>
-                <p className="staff-login__subtitle">
-                  Create a staff account. You&apos;ll set up two-factor authentication on the next step.
-                </p>
-              </div>
-              {error ? <ErrorBanner message={error} /> : null}
-              <div className="staff-field">
-                <label className="staff-field__label" htmlFor="staff-name">
-                  Full name
-                </label>
-                <input
-                  id="staff-name"
-                  className="staff-input"
-                  type="text"
-                  autoComplete="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="staff-field">
-                <label className="staff-field__label" htmlFor="staff-organization">
-                  Organization
-                </label>
-                <select
-                  id="staff-organization"
-                  className="staff-input staff-select"
-                  value={organizationId}
-                  onChange={(e) => setOrganizationId(e.target.value)}
-                  required
-                >
-                  <option value="" disabled>
-                    {organizations.length === 0 ? "Loading organizations…" : "Select your organization"}
-                  </option>
-                  {organizations.map((org) => (
-                    <option key={org._id} value={org._id}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="staff-field__hint">
-                  Your organization is chosen from the list — you cannot create a new one.
-                </span>
-              </div>
-              <div className="staff-field">
-                <label className="staff-field__label" htmlFor="staff-signup-email">
-                  Email
-                </label>
-                <input
-                  id="staff-signup-email"
-                  className="staff-input"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-                <span className="staff-field__hint">
-                  Use a gmail.com address — other email domains are not accepted.
-                </span>
-              </div>
-              <div className="staff-field">
-                <label className="staff-field__label" htmlFor="staff-signup-password">
-                  Password
-                </label>
-                <div className="staff-login__password">
-                  <input
-                    id="staff-signup-password"
-                    className="staff-input"
-                    type={signupPasswordVisible ? "text" : "password"}
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="staff-login__visibility"
-                    aria-label={signupPasswordVisible ? "Hide password" : "Show password"}
-                    aria-pressed={signupPasswordVisible}
-                    aria-controls="staff-signup-password"
-                    title={signupPasswordVisible ? "Hide password" : "Show password"}
-                    onClick={() => setSignupPasswordVisible(!signupPasswordVisible)}
-                  >
-                    <IconEye concealed={signupPasswordVisible} />
-                  </button>
-                </div>
-                <span className="staff-field__hint">At least 10 characters.</span>
-              </div>
-              <div className="staff-field">
-                <label className="staff-field__label" htmlFor="staff-confirm-password">
-                  Confirm password
-                </label>
-                <div className="staff-login__password">
-                  <input
-                    id="staff-confirm-password"
-                    className="staff-input"
-                    type={confirmPasswordVisible ? "text" : "password"}
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="staff-login__visibility"
-                    aria-label={confirmPasswordVisible ? "Hide confirm password" : "Show confirm password"}
-                    aria-pressed={confirmPasswordVisible}
-                    aria-controls="staff-confirm-password"
-                    title={confirmPasswordVisible ? "Hide confirm password" : "Show confirm password"}
-                    onClick={() => setConfirmPasswordVisible(!confirmPasswordVisible)}
-                  >
-                    <IconEye concealed={confirmPasswordVisible} />
-                  </button>
-                </div>
-              </div>
-              <Button type="submit" block loading={isSubmitting}>
-                Create account
-              </Button>
-              <Button variant="ghost" block onClick={handleCancelLogin}>
-                Back to sign in
-              </Button>
-            </form>
-          ) : null}
-
           {showPendingApproval ? (
             <div className="staff-form">
               <div>
                 <div className="staff-eyebrow">Registration received</div>
-                <h1 className="staff-login__title">
-                  Pending approval
-                </h1>
+                <h1 className="staff-login__title">Pending approval</h1>
                 <p className="staff-login__subtitle">
                   Your staff account has been created. An administrator must approve your account before you can sign in and set up two-factor authentication.
                 </p>
@@ -561,12 +359,8 @@ export function LoginScreen() {
             <form className="staff-form" onSubmit={handleVerify} noValidate>
               <div>
                 <div className="staff-eyebrow">Two-factor authentication</div>
-                <h1 className="staff-login__title">
-                  Enter your code
-                </h1>
-                <p className="staff-login__subtitle">
-                  Open your authenticator app and enter the 6-digit code.
-                </p>
+                <h1 className="staff-login__title">Enter your code</h1>
+                <p className="staff-login__subtitle">Open your authenticator app and enter the 6-digit code.</p>
               </div>
               {error ? <ErrorBanner message={error} /> : null}
               <div className="staff-field">
@@ -597,12 +391,8 @@ export function LoginScreen() {
             <form className="staff-form" onSubmit={handleEnroll} noValidate>
               <div>
                 <div className="staff-eyebrow">First-time setup</div>
-                <h1 className="staff-login__title">
-                  Set up two-factor authentication
-                </h1>
-                <p className="staff-login__subtitle">
-                  Your account requires 2FA before you can access the staff dashboard.
-                </p>
+                <h1 className="staff-login__title">Set up two-factor authentication</h1>
+                <p className="staff-login__subtitle">Your account requires 2FA before you can access the staff dashboard.</p>
               </div>
               {error ? <ErrorBanner message={error} /> : null}
 
@@ -651,7 +441,7 @@ export function LoginScreen() {
             </form>
           ) : null}
         </div>
-      </section>
-    </main>
+      }
+    />
   );
 }

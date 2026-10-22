@@ -144,19 +144,6 @@ export const api = {
   login: (email: string, password: string) =>
     request<AuthResult>("/api/auth/login", { method: "POST", body: { email, password }, auth: false }),
 
-  register: (name: string, organizationId: string, email: string, password: string) =>
-    request<AuthResult>("/api/auth/register", {
-      method: "POST",
-      body: { name, organizationId, email, password },
-      auth: false,
-    }),
-
-  /** Public org list for the registration dropdown (id + name only). */
-  listPublicOrganizations: () =>
-    request<{ organizations: Array<{ _id: string; name: string }> }>("/api/organizations/public", {
-      auth: false,
-    }),
-
   /* ---------- Password recovery (staff-only, unauthenticated) ---------- */
 
   forgotPassword: (email: string) =>
@@ -170,6 +157,34 @@ export const api = {
     request<{ message: string }>("/api/auth/reset-password", {
       method: "POST",
       body: { token, password, passwordConfirmation: password },
+      auth: false,
+    }),
+
+  resendPasswordReset: (email: string) =>
+    request<{ message: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      auth: false,
+    }),
+
+  staffSetupAccept: (token: string, password: string) =>
+    request<{ status: "mfa_enroll_required"; challengeToken: string; user: { id: string; name: string; email?: string } }>("/api/admin/staff/setup/accept", {
+      method: "POST",
+      body: { token, password },
+      auth: false,
+    }),
+
+  staffSetupEnrollStart: (challengeToken: string) =>
+    request<{ secret: string; otpauthUrl: string; qrDataUrl: string }>("/api/admin/2fa/enroll/start", {
+      method: "POST",
+      body: { challengeToken },
+      auth: false,
+    }),
+
+  staffSetupEnrollActivate: (challengeToken: string, code: string) =>
+    request<{ status: "authenticated"; accessToken: string; refreshToken: string; user: any }>("/api/admin/staff/setup/activate", {
+      method: "POST",
+      body: { challengeToken, code },
       auth: false,
     }),
 
@@ -210,6 +225,20 @@ export const api = {
     request<{ ok: boolean }>("/api/auth/change-password", {
       method: "POST",
       body: { currentPassword, newPassword },
+    }),
+
+  staffSetupAccept: (token: string, password: string) =>
+    request<{ status: "mfa_enroll_required"; challengeToken: string; user: { id: string; name: string; email?: string } }>("/api/admin/staff/setup/accept", {
+      method: "POST",
+      body: { token, password },
+      auth: false,
+    }),
+
+  staffSetupEnrollStart: (challengeToken: string) =>
+    request<{ secret: string; otpauthUrl: string; qrDataUrl: string }>("/api/admin/2fa/enroll/start", {
+      method: "POST",
+      body: { challengeToken },
+      auth: false,
     }),
 
   /* ---------- Organization + tellers (staff-role reads) ---------- */

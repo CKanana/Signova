@@ -2,6 +2,7 @@ import { Teller } from "../models/teller.js";
 import { NotFoundError, ConflictError, BadRequestError } from "../utils/errors.js";
 import type { Types } from "mongoose";
 import type { TellerStatus } from "../../../shared/types/translation.js";
+import { reserveTeller, releaseTeller } from "./sessionService.js";
 
 export async function listTellers(orgId: string | Types.ObjectId) {
   return Teller.find({ organization: orgId }).sort({ counterNumber: 1 });
@@ -44,15 +45,17 @@ export async function updateTellerAvailability(
   orgId: string | Types.ObjectId,
   tellerId: string,
   status: TellerStatus,
-) {
-  if (!["FREE", "BUSY", "OFFLINE"].includes(status)) {
-    throw new BadRequestError("Invalid teller status");
+): Promise<import("../models/teller.js").ITeller> {
+  if (status === "BUSY") {
+    const booked = await reserveTeller(orgId, tellerId);
+    if (!booked) throw new ConflictError("Teller is currently in a session");
+    return booked;
   }
-  const teller = await Teller.findOneAndUpdate(
-    { _id: tellerId, organization: orgId },
-    { status },
-    { new: true },
-  );
+  // FREE / OFFLINE: release any live BUSY lease if present; do not
+  // error when the teller is already FREE/ONLINE.
+  await releaseTeller(orgId, tellerId);
+  // Confirm the teller still exists (or the org-scoped query resolves it).
+  const teller = await Teller.findById(tellerId);
   if (!teller) throw new NotFoundError("Teller not found");
   return teller;
 }

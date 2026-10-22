@@ -1,3 +1,310 @@
+/* ==========================================================================
+   Signova AuthLayout — shared login stylesheet
+   ========================================================================== */
+
+/* Staff tokens scoped to .staff-login so Admin globals cannot override them */
+.staff-login {
+  --signova-primary: #5b2a86;
+  --signova-on-primary: #ffffff;
+  --signova-background: #f7f0e0;
+  /* Cards/panels use a warm corn-silk surface, not stark white, so the
+     dashboard stays in the purple/corn-silk Signova identity. */
+  --signova-surface: #fff9eb;
+  --signova-text: #241f27;
+  --signova-muted-text: #68636b;
+  --signova-border: #ded8c8;
+  --signova-success: #1b7548;
+  --signova-warning: #965300;
+  --signova-danger: #b3261e;
+  --signova-focus: #315ea8;
+
+  /* ---- Extended brand tokens (Styleboard: additive, non-breaking) ---- */
+  --signova-royal: #6a3db8;
+  --signova-lavender: #c9b4ff;
+  --signova-deep: #4b3b6b;
+  --signova-dark: #1e1b2e;
+  --signova-corn: #f8eed4;
+  --signova-selected: #f5effa;
+  --signova-lavender-chip: #f0e8f6;
+  --signova-success-chip: #e8f3e9;
+  --signova-warning-chip: #fdf0dc;
+  --signova-danger-chip: #fbe9e7;
+
+  /* ---- Spacing scale (matches mobile theme.spacing) ---- */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* ---- Radii (matches mobile theme.radii) ---- */
+  --radius-control: 12px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
+
+  /* ---- Typography ---- */
+  --font-heading: "Manrope", "Segoe UI", sans-serif;
+  --font-body: "DM Sans", "Segoe UI", sans-serif;
+
+  /* ---- Elevation (soft, warm) ---- */
+  --shadow-card: 0 3px 9px rgba(38, 27, 48, 0.06);
+  --shadow-card-selected: 0 6px 16px rgba(91, 42, 134, 0.16);
+  --shadow-panel: 0 10px 30px rgba(38, 27, 48, 0.08);
+
+  color-scheme: light;
+}
+
+/* Base rules copied verbatim from Staff staff.css */
+.staff-eyebrow {
+  color: var(--signova-primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ============ Buttons ============ */
+
+.staff-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius-control);
+  border: 2px solid transparent;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 100ms ease, opacity 100ms ease, background 120ms ease;
+}
+
+.staff-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.staff-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.staff-btn--primary {
+  background: var(--signova-primary);
+  border-color: var(--signova-primary);
+  color: #fff;
+  box-shadow: 0 3px 6px rgba(91, 42, 134, 0.22);
+}
+
+.staff-btn--primary:hover:not(:disabled) {
+  background: var(--signova-royal);
+  border-color: var(--signova-royal);
+}
+
+.staff-btn--secondary {
+  background: var(--signova-surface);
+  border-color: var(--signova-primary);
+  color: var(--signova-primary);
+}
+
+.staff-btn--secondary:hover:not(:disabled) {
+  background: var(--signova-selected);
+}
+
+.staff-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--signova-muted-text);
+}
+
+.staff-btn--ghost:hover:not(:disabled) {
+  background: var(--signova-lavender-chip);
+  color: var(--signova-text);
+}
+
+.staff-btn--danger {
+  background: var(--signova-danger);
+  border-color: var(--signova-danger);
+  color: #fff;
+}
+
+.staff-btn--sm {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.staff-btn--block {
+  width: 100%;
+}
+
+.staff-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.staff-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-field__label {
+  color: var(--signova-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.staff-field__hint {
+  color: var(--signova-muted-text);
+  font-size: 12px;
+}
+
+.staff-input {
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--signova-border);
+  border-radius: var(--radius-control);
+  background: var(--signova-surface);
+  color: var(--signova-text);
+  font-size: 16px;
+}
+
+.staff-input:focus-visible {
+  border-color: var(--signova-primary);
+}
+
+.staff-input--code {
+  letter-spacing: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.staff-login {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+}
+
+.staff-login__brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: var(--spacing-xl);
+  background: var(--signova-deep);
+  color: #fff;
+}
+
+.staff-login__brandmark {
+  align-self: flex-start;
+  width: 100%;
+  max-width: 280px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.staff-login__logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 434 / 180;
+  object-fit: contain;
+}
+
+.staff-login__tagline {
+  color: var(--signova-corn);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.staff-login__headline {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.staff-login__copy {
+  max-width: 420px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.staff-login__panel {
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-xl);
+}
+
+.staff-login__card {
+  width: 100%;
+  max-width: 440px;
+  padding: var(--spacing-xl);
+  border: 1.5px solid var(--signova-border);
+  border-radius: var(--radius-panel);
+  background: var(--signova-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.staff-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--signova-lavender);
+  border-top-color: var(--signova-primary);
+  border-radius: 50%;
+  animation: staff-spin 0.9s linear infinite;
+}
+
+@keyframes staff-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.staff-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1.5px solid var(--signova-border);
+  border-radius: var(--radius-control);
+  background: var(--signova-surface);
+  font-size: 14px;
+}
+
+.staff-banner--error {
+  border-color: var(--signova-danger);
+  background: var(--signova-danger-chip);
+  color: var(--signova-danger);
+}
+
+.staff-banner--warn {
+  border-color: var(--signova-warning);
+  background: var(--signova-warning-chip);
+  color: var(--signova-warning);
+}
+
+.staff-banner__body {
+  flex: 1;
+  font-weight: 600;
+}
+
+.staff-banner__actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+/* Login overrides copied verbatim from Staff login.css */
 .staff-login {
   grid-template-columns: minmax(0, 48fr) minmax(0, 52fr);
   min-height: 100svh;
@@ -151,6 +458,10 @@
   color: var(--signova-muted-text);
   font-size: 14px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
 }
 
 .staff-login__link {

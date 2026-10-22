@@ -1,27 +1,12 @@
 import { Organization } from "../models/organization.js";
 import { User } from "../models/user.js";
 import { Teller } from "../models/teller.js";
+import { SetupToken } from "../models/setupToken.js";
 import { hashPassword } from "../services/tokenService.js";
+import { randomToken, hashToken } from "../utils/crypto.js";
+import { recordAudit } from "../services/auditService.js";
 
-/**
- * Development seed. Creates two organizations — an admin, staff users and
- * tellers in the primary one — and is safe to run repeatedly: every
- * organization it owns (matched by shortName) is wiped and recreated, so
- * re-running never duplicates organizations, users or tellers.
- *
- * The registration-domain policy fields are seeded on the primary org so
- * the public sign-up page's behaviour is demonstrable:
- *   - KNH: restrictRegistrationByDomain ON with gmail.com + signova.test
- *   - MTRH: restrictRegistrationByDomain ON with strathmore.edu only
- *
- * NOTE: public registration itself is currently gmail.com only and is
- * enforced in authService.registerStaff — these per-org lists exist so
- * the Phase 4 Admin Portal has real policy data to manage.
- *
- * NOTE: seeded passwords are development-only and printed to the console.
- */
-
-const ADMIN_SEED = { name: "Signova Admin", email: "admin@signova.test", password: "Password123!" };
+const ADMIN_SEED = { name: "Signova Admin", email: "admin@signova.test" };
 
 interface OrgSeed {
   name: string;
@@ -73,92 +58,113 @@ const ORG_SEEDS: OrgSeed[] = [
   },
 ];
 
-/** Domains each organization approves for public registration. */
 const ALLOWED_DOMAINS: Record<string, string[]> = {
   KNH: ["gmail.com", "signova.test"],
   MTRH: ["strathmore.edu"],
 };
 
-async function wipeOrganization(shortName: string): Promise<void> {
-  const existing = await Organization.findOne({ shortName });
-  if (!existing) return;
-  await User.deleteMany({ organization: existing._id });
-  await Teller.deleteMany({ organization: existing._id });
-  await Organization.deleteOne({ _id: existing._id });
-  // eslint-disable-next-line no-console
-  console.log(`[seed] removed existing org "${shortName}"`);
-}
-
 export async function seed(): Promise<void> {
   for (const orgSeed of ORG_SEEDS) {
-    await wipeOrganization(orgSeed.shortName);
+    const org = await Organization.findOneAndUpdate(
+      { shortName: orgSeed.shortName },
+      {
+        $setOnInsert: {
+          name: orgSeed.name,
+          welcomeMessage: orgSeed.welcomeMessage,
+          serviceName: orgSeed.serviceName,
+          counterLabel: orgSeed.counterLabel,
+          restrictRegistrationByDomain: true,
+          allowedEmailDomains: ALLOWED_DOMAINS[orgSeed.shortName] ?? [],
+        },
+        $set: {
+          colors: { primary: "#5B2A86", background: "#FFF8DC" },
+          ...(orgSeed.shortName === "KNH" ? { bootstrapAdminException: true, bootstrapAdminEmail: "crystal.kanana@strathmore.edu" } : {}),
+        },
+      },
+      { new: true, upsert: true },
+    );
+
+    await seedStaff(org);
+    await seedTellers(org, orgSeed);
   }
 
-  for (const orgSeed of ORG_SEEDS) {
-    const org = await Organization.create({
-      name: orgSeed.name,
-      shortName: orgSeed.shortName,
-      welcomeMessage: orgSeed.welcomeMessage,
-      serviceName: orgSeed.serviceName,
-      counterLabel: orgSeed.counterLabel,
-      colors: { primary: "#5B2A86", background: "#FFF8DC" },
-      restrictRegistrationByDomain: true,
-      allowedEmailDomains: ALLOWED_DOMAINS[orgSeed.shortName] ?? [],
-    });
-
-    // The admin is seeded into the primary organization only.
-    if (orgSeed.shortName === "KNH") {
-      await User.create({
-        organization: org._id,
-        role: "ADMIN",
-        name: ADMIN_SEED.name,
-        email: ADMIN_SEED.email,
-        passwordHash: await hashPassword(ADMIN_SEED.password),
-      });
-    }
-
-    const staffUsers = [];
-    for (const s of orgSeed.staff) {
-      staffUsers.push(
-        await User.create({
-          organization: org._id,
-          role: "STAFF",
-          name: s.name,
-          email: s.email,
-          passwordHash: await hashPassword(s.password),
-        }),
-      );
-    }
-
-    for (const t of orgSeed.tellers) {
-      const staffMember = staffUsers[t.staffIndex];
-      if (!staffMember) continue;
-      await Teller.create({
-        organization: org._id,
-        name: t.name,
-        serviceLabel: t.serviceLabel,
-        serviceDesk: t.serviceDesk,
-        counterNumber: t.counterNumber,
-        pairingCode: t.pairingCode,
-        staffUser: staffMember._id,
-        status: "FREE",
-      });
-    }
-
-    // eslint-disable-next-line no-console
-    console.log(
-      `[seed] ${org.name} (${org.shortName}) — ` +
-        `${staffUsers.length} staff, ${orgSeed.tellers.length} tellers, ` +
-        `registration domains: ${(ALLOWED_DOMAINS[orgSeed.shortName] ?? []).join(", ")}`,
-    );
+  const knh = await Organization.findOne({ shortName: "KNH" });
+  if (knh) {
+    await seedKnhAdmin(knh);
   }
 
   // eslint-disable-next-line no-console
-  console.log(`
-[seed] Admin:   ${ADMIN_SEED.email} / ${ADMIN_SEED.password}
-[seed] Staff:   ${ORG_SEEDS[0]?.staff.map((s) => s.email).join(", ")} / ${ORG_SEEDS[0]?.staff[0]?.password}
-[seed] Public sign-up is currently limited to gmail.com addresses.
-[seed] NOTE: 2FA is not enabled on seeded accounts. On first login each user
-       will be asked to enroll an authenticator app before receiving a token.
-`);
+  console.log(
+    `[seed] Staff:   ${ORG_SEEDS[0]?.staff.map((s) => s.email).join(", ")} / ${ORG_SEEDS[0]?.staff[0]?.password}\n[seed] Public sign-up is currently disabled. Staff are invited by administrators only.`,
+  );
+}
+
+async function seedStaff(org: any): Promise<void> {
+  const existing = await User.find({ organization: org._id, role: "STAFF" });
+  const byEmail = new Map(existing.map((u) => [u.email, u]));
+
+  const orgSeed = ORG_SEEDS.find((o) => o.shortName === org.shortName);
+  if (!orgSeed) return;
+
+  for (const s of orgSeed.staff) {
+    const found = byEmail.get(s.email);
+    if (found) continue;
+    await User.create({
+      organization: org._id,
+      role: "STAFF",
+      name: s.name,
+      email: s.email,
+      passwordHash: await hashPassword(s.password),
+    });
+  }
+}
+
+async function seedTellers(org: any, orgSeed: OrgSeed): Promise<void> {
+  const existingCount = await Teller.countDocuments({ organization: org._id });
+  if (existingCount > 0) return;
+
+  const staff = await User.find({ organization: org._id, role: "STAFF" });
+  const byEmail = new Map(staff.map((u) => [u.email, u]));
+
+  for (const t of orgSeed.tellers) {
+    const member = byEmail.get(orgSeed.staff[t.staffIndex]?.email);
+    if (!member) continue;
+    await Teller.create({
+      organization: org._id,
+      name: t.name,
+      serviceLabel: t.serviceLabel,
+      serviceDesk: t.serviceDesk,
+      counterNumber: t.counterNumber,
+      pairingCode: t.pairingCode,
+      staffUser: member._id,
+      status: "FREE",
+    });
+  }
+}
+
+async function seedKnhAdmin(org: any): Promise<void> {
+  const existingAdmin = await User.findOne({ email: "admin@signova.test" });
+  if (!existingAdmin) {
+    await User.create({
+      organization: org._id,
+      role: "ADMIN",
+      name: "Signova Admin",
+      email: "admin@signova.test",
+      passwordHash: await hashPassword("Password123!"),
+      isActive: true,
+      twoFactorEnabled: false,
+    });
+  }
+
+  const bootstrapEmail = "crystal.kanana@strathmore.edu";
+  const bootstrapUser = await User.findOne({ email: bootstrapEmail });
+  if (!bootstrapUser) {
+    await User.create({
+      organization: org._id,
+      role: "ADMIN",
+      name: "Crystal Kanana",
+      email: bootstrapEmail,
+      isActive: false,
+    });
+  }
 }

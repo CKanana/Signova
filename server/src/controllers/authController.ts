@@ -14,6 +14,7 @@ import {
   requestPasswordReset,
   resetPassword,
 } from "../services/authService.js";
+import { assertPasswordPolicy } from "../utils/passwordPolicy.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -121,6 +122,7 @@ export const meHandler = async (req: Request, res: Response) => {
 export const changePasswordHandler = [
   validate({ body: changePwSchema }),
   async (req: Request, res: Response) => {
+    assertPasswordPolicy(req.body.newPassword);
     await changePassword(req.auth!.sub, req.body.currentPassword, req.body.newPassword, req);
     res.json({ ok: true });
   },
@@ -150,8 +152,14 @@ export const forgotPasswordHandler = [
   validate({ body: forgotPasswordSchema }),
   async (req: Request, res: Response) => {
     await requestPasswordReset(req.body.email, req);
-    // Always the same response — never reveals whether an account exists.
     res.json({ message: FORGOT_PASSWORD_MESSAGE });
+  },
+];
+
+export const rejectPublicRegistrationHandler = [
+  validate({ body: z.object({}) }),
+  async (_req: Request, res: Response) => {
+    res.status(403).json({ error: { code: "PUBLIC_REGISTRATION_DISABLED", message: "Public registration is disabled. Contact an administrator for an invitation." } });
   },
 ];
 

@@ -2,7 +2,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config/env.js";
 
 /**
- * Email delivery for Signova (new-staff welcome + password reset).
+ * Email delivery for Signova (new-staff welcome + password reset + invitations).
  *
  * Uses Gmail SMTP via Nodemailer. Credentials come exclusively from
  * environment variables (SMTP_USER + SMTP_APP_PASSWORD — a Gmail App
@@ -61,14 +61,14 @@ export async function sendMail(message: MailMessage): Promise<boolean> {
     return false;
   }
   try {
-    await getTransport().sendMail({
+    const result = await getTransport().sendMail({
       from: config.smtp.user,
       to: message.to,
       subject: message.subject,
       text: message.text,
       html: message.html,
     });
-    return true;
+    return Boolean(result);
   } catch (err) {
     // Redacted: no recipient, no token, no credentials.
     // eslint-disable-next-line no-console
@@ -114,6 +114,92 @@ export function buildResetEmail(resetUrl: string): { subject: string; text: stri
 /** Sign-in URL shown in the welcome email (trusted, from env). */
 function signInUrl(): string {
   return config.passwordResetBaseUrl;
+}
+
+const SETUP_HTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Set up your Signova account</title>
+</head>
+<body style="margin:0;background:#FFF8DC;font-family:Arial,Helvetica,sans-serif;color:#241f27">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF8DC;padding:32px 16px">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(40,20,10,0.08)">
+          <tr>
+            <td style="background:#5B2A86;padding:24px 28px">
+              <img src="cid:signova-logo" alt="Signova" width="140" style="display:block;width:140px;max-width:100%;height:auto" />
+              <p style="margin:14px 0 0;color:#ffffff;font-size:13px;line-height:18px;opacity:.9">Real-time sign language support for service counters.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px">
+              <h1 style="margin:0 0 8px;font-size:22px;color:#5B2A86;line-height:28px">You're invited to Signova</h1>
+              <p style="margin:0 0 18px;font-size:15px;line-height:22px;color:#241f27">Hi {{firstName}},</p>
+              <p style="margin:0 0 18px;font-size:15px;line-height:22px;color:#241f27">You have been invited to join <strong>{{orgName}}</strong> as an administrator. Complete the short setup below to activate your account.</p>
+              <p style="margin:0 0 24px;font-size:15px;line-height:22px;color:#241f27">
+                <a href="{{setupUrl}}" style="display:inline-block;background:#5B2A86;color:#ffffff;padding:14px 22px;border-radius:14px;text-decoration:none;font-weight:bold">Open account setup</a>
+              </p>
+              <p style="margin:0 0 18px;font-size:14px;line-height:20px;color:#2E8B8F">This link expires on <strong>{{expiresOn}}</strong>. If the button doesn’t work, copy and paste this URL:</p>
+              <p style="margin:0 0 24px;padding:12px 14px;background:#FFF8DC;border-radius:12px;font-family:monospace;font-size:13px;color:#241f27;word-break:break-all">{{setupUrl}}</p>
+              <p style="margin:0 0 10px;font-size:13px;line-height:19px;color:#463f48">If you did not expect this invitation, you can safely ignore this email — no account will be created without your confirmation.</p>
+              <p style="margin:0;font-size:13px;line-height:19px;color:#463f48">Signova support will never ask you to share a setup link or password.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px;background:#ffffff;border-top:1px solid #efe9d2">
+              <p style="margin:0;font-size:12px;line-height:18px;color:#68636b">Need help? Contact <a href="mailto:support@signova.example" style="color:#5B2A86;text-decoration:underline">support@signova.example</a> or reply to this email.</p>
+              <p style="margin:10px 0 0;font-size:12px;line-height:18px;color:#68636b">&copy; <span id="year"></span> Signova. All rights reserved.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`.trim();
+
+const SETUP_TEXT = [
+  "Hi {{firstName}},",
+  "",
+  "You have been invited to join {{orgName}} as an administrator.",
+  "",
+  "Set up your account: {{setupUrl}}",
+  "",
+  "This link expires on {{expiresOn}}.",
+  "",
+  "If you did not expect this invitation, you can safely ignore this email.",
+  "",
+  "Signova support will never ask you to share a setup link or password.",
+].join("\n");
+
+function render(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? `{{${key}}}`);
+}
+
+export function buildSetupEmail(
+  name: string,
+  orgName: string,
+  setupUrl: string,
+  expiresAt: Date,
+): { subject: string; text: string; html: string } {
+  const firstName = name.trim().split(" ")[0] || "there";
+  const expiresOn = new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(expiresAt);
+
+  const values = { firstName, orgName, setupUrl, expiresOn };
+
+  const subject = "Set up your Signova administrator account";
+  const text = render(SETUP_TEXT, values);
+  const html = render(SETUP_HTML, values).replace('<span id="year"></span>', String(new Date().getFullYear()));
+
+  return { subject, text, html };
 }
 
 /**
@@ -192,6 +278,53 @@ export function buildWelcomeEmail(
   <p style="font-size:13px;color:#68636b">
     On your first sign-in you&apos;ll set up two-factor authentication with an
     authenticator app — this keeps your account secure.
+  </p>
+  <p style="font-size:13px;color:#68636b">
+    Signova support will never ask you to share your password.
+  </p>
+</div>`.trim();
+  return { subject, text, html };
+}
+
+/**
+ * Build the staff invitation email (plain + HTML).
+ */
+export function buildInvitationEmail(
+  name: string,
+  invitationUrl: string,
+  expiresAt: Date
+): { subject: string; text: string; html: string } {
+  const firstName = name.trim().split(" ")[0] || "there";
+  const expiresOn = new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(expiresAt);
+
+  const subject = "You are invited to Signova";
+  const text = [
+    `Hi ${firstName},`,
+    "",
+    "You have been invited to join Signova as a staff member.",
+    "",
+    `Accept your invitation: ${invitationUrl}`,
+    "",
+    `This link expires on ${expiresOn}.`,
+    "",
+    "Signova support will never ask you to share your password.",
+  ].join("\n");
+  const html = `
+<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;color:#241f27">
+  <h2 style="color:#5B2A86">You are invited to Signova</h2>
+  <p>Hi ${firstName},</p>
+  <p>You have been invited to join Signova as a staff member.</p>
+  <p>
+    <a href="${invitationUrl}"
+       style="display:inline-block;background:#5B2A86;color:#fff;padding:12px 20px;border-radius:12px;text-decoration:none;font-weight:bold">
+      Accept invitation
+    </a>
+  </p>
+  <p style="font-size:13px;color:#68636b">
+    This link expires on ${expiresOn}. If you did not expect this invitation, you can safely ignore this email.
   </p>
   <p style="font-size:13px;color:#68636b">
     Signova support will never ask you to share your password.

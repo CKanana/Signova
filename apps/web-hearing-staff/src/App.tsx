@@ -4,23 +4,13 @@ import { StaffWorkspaceProvider, useStaffWorkspace } from "./context/StaffWorksp
 import { Sidebar, type StaffViewName } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
 import { LoginScreen } from "./pages/LoginPage";
+import { StaffSetup } from "./pages/StaffSetup";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SessionPage } from "./pages/SessionPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LoadingState } from "./components/ui/States";
 import { disconnectStaffSocket } from "./services/socket";
-
-/**
- * Staff application shell.
- *
- * Route guarding happens in two layers:
- *  1. This component only renders the workspace when useStaffAuth() reports
- *     an authenticated STAFF/ADMIN session (a token the backend signed).
- *  2. Every API and socket call is re-authorized server-side — the client
- *     gate is convenience, not security. No staff data is ever fetched
- *     without a Bearer token.
- */
 
 type View = StaffViewName;
 
@@ -43,8 +33,15 @@ export default function App() {
 
 function Root() {
   const { isAuthenticated, isLoading } = useStaffAuth();
+  const [setupToken, setSetupToken] = useState<string | null>(null);
 
-  // Tear the socket down whenever the session ends (sign-out / token drop).
+  React.useEffect(() => {
+    if (isAuthenticated) return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    if (token) setSetupToken(token);
+  }, [isAuthenticated]);
+
   React.useEffect(() => {
     if (!isAuthenticated) {
       disconnectStaffSocket();
@@ -57,6 +54,10 @@ function Root() {
         <LoadingState label="Checking your session…" />
       </main>
     );
+  }
+
+  if (!isAuthenticated && setupToken) {
+    return <StaffSetup />;
   }
 
   if (!isAuthenticated) {
@@ -73,8 +74,6 @@ function Workspace() {
 
   const navigate = useCallback((next: View) => setView(next), []);
 
-  // Auto-navigate to the session workspace when a request arrives so the
-  // staff member is pulled into the conversation immediately.
   const lastRequestRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (pendingRequest && pendingRequest.sessionId !== lastRequestRef.current) {
@@ -85,7 +84,6 @@ function Workspace() {
   const meta = VIEW_TITLES[view];
   const hasActiveSession = sessionView.kind === "active";
 
-  // Keyboard shortcut: Escape returns to the dashboard from any view.
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && view !== "dashboard") setView("dashboard");

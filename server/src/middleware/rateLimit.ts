@@ -54,3 +54,25 @@ export const resetPasswordLimiter = rateLimit({
     throw new TooManyRequestsError("Too many attempts. Try again later.");
   },
 });
+
+export const inviteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: config.isProduction ? 10 : 10000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => config.env === "test",
+  handler: () => {
+    throw new TooManyRequestsError("Too many invitation attempts. Try again later.");
+  },
+});
+
+export const inviteAcceptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: config.isProduction ? 20 : 10000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => config.env === "test",
+  handler: () => {
+    throw new TooManyRequestsError("Too many invitation attempts. Try again later.");
+  },
+});

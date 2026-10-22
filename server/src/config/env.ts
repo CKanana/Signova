@@ -39,12 +39,17 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_USER: z.string().optional(),
   SMTP_APP_PASSWORD: z.string().optional(),
-  // Base URL of the staff web app, used to build reset links. MUST be a
-  // trusted value (never derived from the request Host header).
+  // Base URL of the admin portal, used to build bootstrap setup links.
+  // Must be a trusted value (never derived from the request Host header).
+  ADMIN_PORTAL_URL: z.string().default("http://localhost:5174"),
+  // Base URL of the staff web app, used to build password-reset links.
   PASSWORD_RESET_BASE_URL: z.string().default("http://localhost:5173"),
   // Reset-token lifetime in minutes (target: 15).
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
 });
+
+// Single-source bootstrap setup token TTL.
+export const BOOTSTRAP_SETUP_TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function loadEnv() {
   const parsed = envSchema.safeParse(process.env);
@@ -85,6 +90,7 @@ export const config = {
     user: env.SMTP_USER?.trim(),
     appPassword: env.SMTP_APP_PASSWORD ? env.SMTP_APP_PASSWORD.replace(/\s+/g, "") : undefined,
   },
-  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.trim().replace(/\/+$/, ""),
+  adminPortalUrl: env.ADMIN_PORTAL_URL.trim().replace(/\/$/, ""),
+  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.trim().replace(/\/$/, ""),
   passwordResetTtlMinutes: env.PASSWORD_RESET_TTL_MINUTES,
 } as const;

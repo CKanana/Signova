@@ -7,11 +7,71 @@ import { recordAudit } from "./auditService.js";
 import type { Types } from "mongoose";
 import type { CommunicationMethod, SessionEndReason } from "../../../shared/types/translation.js";
 
-/**
- * Accept both the mongoose runtime ObjectId and the schema-declared
+/** Accept both the mongoose runtime ObjectId and the schema-declared
  * Schema.Types.ObjectId, or a hex string. All three are valid _id values.
  */
 type ObjectIdLike = Types.ObjectId | { toString(): string };
+
+/** Process-local live-session registry.
+ *
+ * Mirrors the DB-level reservation so that a failed session creation
+ * always releases the teller, and so that a concurrent availability
+ * check cannot be re-run against a stale in-memory view.
+ */
+export const activeLeases = new Map<string, string>(); // sessionId -> tellerId
+
+export function acquireLease(sessionId: string, tellerId: string): void {
+  activeLeases.set(sessionId, tellerId);
+}
+
+export function releaseLease(sessionId: string): void {
+  activeLeases.delete(sessionId);
+}
+
+/** Ticker-aware availability read: checks the DB + the live lease set. */
+export async function tellerHasActiveSession(
+  orgId: ObjectIdLike,
+  tellerId: ObjectIdLike
+): Promise<boolean> {
+  const live = await Session.countDocuments({
+    organization: orgId,
+    teller: tellerId,
+    status: { $in: ["CONNECTING", "ACTIVE"] },
+  });
+  return live > 0 || activeLeases.has(String(tellerId));
+}
+
+/**
+ * Atomically reserve a teller for a new session.
+ *
+ * The update condition `{ status: "FREE" }` means the teller is only
+ * claimed if it is currently FREE. Returns the claimed teller (status
+ * BUSY) or null if the reservation failed because the teller is not
+ * FREE (another request won the race). This is a single atomic
+ * MongoDB operation — no read-then-write TOCTOU race.
+ */
+export async function reserveTeller(
+  orgId: ObjectIdLike,
+  tellerId: ObjectIdLike
+): Promise<import("../models/teller.js").ITeller | null> {
+  return Teller.findOneAndUpdate(
+    { _id: tellerId, organization: orgId, status: "FREE" },
+    { $set: { status: "BUSY" } },
+    { new: true }
+  );
+}
+
+/** Release a reserved teller back to FREE (conditional update). */
+export async function releaseTeller(
+  orgId: ObjectIdLike,
+  tellerId: ObjectIdLike
+): Promise<import("../models/teller.js").ITeller | null> {
+  return Teller.findOneAndUpdate(
+    { _id: tellerId, organization: orgId, status: "BUSY" },
+    { $set: { status: "FREE" } },
+    { new: true }
+  );
+}
 
 /** Ensure a SessionLog exists for a session. */
 export async function ensureSessionLog(sessionId: ObjectIdLike, orgId: ObjectIdLike) {
@@ -55,12 +115,18 @@ async function ensureDeafUser(orgId: ObjectIdLike, deviceId: string): Promise<Ob
 
 /**
  * Create a new session for a Deaf user pairing with a teller.
- * Marks the teller BUSY and emits (via realtime layer) a session:request.
+ *
+ * Reservation is atomic: the teller is claimed with a single
+ * findOneAndUpdate whose condition requires status FREE. On failure the
+ * teller is released back to FREE within the same function, so a
+ * rejected session never leaves the teller stuck BUSY. Live leases
+ * track the reservation in-process; the authoritative state is the
+ * teller's status field in MongoDB.
  */
 export async function createSession(
   orgId: ObjectIdLike,
   input: { tellerId?: string; pairingCode?: string; method: CommunicationMethod; deviceId: string },
-) {
+): Promise<import("../models/session.js").ISession> {
   let teller;
   if (input.tellerId) {
     teller = await Teller.findOne({ _id: input.tellerId, organization: orgId });
@@ -68,28 +134,43 @@ export async function createSession(
     teller = await Teller.findOne({ organization: orgId, pairingCode: input.pairingCode.toUpperCase() });
   }
   if (!teller) throw new NotFoundError("Teller not found");
-  if (teller.status === "BUSY") throw new ConflictError("Teller is currently in a session");
 
-  const deafUserId = await ensureDeafUser(orgId, input.deviceId);
+  const sessionId = new Session()._id.toString();
 
-  const session = await Session.create({
-    organization: orgId,
-    teller: teller._id,
-    deafUser: deafUserId,
-    method: input.method,
-    status: "CONNECTING",
-    pairingCode: teller.pairingCode,
-    messageCount: 0,
-    isRecorded: true,
-  });
+  // Reserve the teller atomically. If this returns null, another request
+  // won the race and we exit without side effects.
+  const claimed = await reserveTeller(orgId, teller._id);
+  if (!claimed) {
+    // Another request reserved this teller first; nothing was created.
+    releaseLease(sessionId);
+    throw new ConflictError("Teller is currently in a session");
+  }
+  acquireLease(sessionId, String(teller._id));
 
-  teller.status = "BUSY";
-  await teller.save();
+  try {
+    const deafUserId = await ensureDeafUser(orgId, input.deviceId);
 
-  await ensureSessionLog(session._id, orgId);
-  await logSessionEvent(session._id, orgId, "session_created", { method: input.method });
+    const session = await Session.create({
+      organization: orgId,
+      teller: claimed._id,
+      deafUser: deafUserId,
+      method: input.method,
+      status: "CONNECTING",
+      pairingCode: claimed.pairingCode,
+      messageCount: 0,
+      isRecorded: true,
+    });
 
-  return session;
+    await ensureSessionLog(session._id, orgId);
+    await logSessionEvent(session._id, orgId, "session_created", { method: input.method });
+    return session;
+  } catch (err) {
+    // Roll back the reservation so a failed creation does not leave the
+    // teller permanently BUSY.
+    await releaseTeller(orgId, teller._id);
+    releaseLease(sessionId);
+    throw err;
+  }
 }
 
 export async function getCurrentSessionForDevice(orgId: ObjectIdLike, deviceId: string) {
@@ -119,7 +200,7 @@ export async function listSessions(
   return Session.find(filter).sort({ createdAt: -1 }).limit(opts.limit ?? 100);
 }
 
-/** Transition session status. On end, free the teller and finalize the log. */
+/** Transition session status. On end, free the teller. */
 export async function updateSessionStatus(
   orgId: ObjectIdLike,
   sessionId: string,
@@ -135,7 +216,7 @@ export async function updateSessionStatus(
     session.endReason = endReason ?? "USER_ENDED";
 
     // Free the teller.
-    await Teller.updateOne({ _id: session.teller }, { status: "FREE" });
+    await Teller.updateOne({ _id: session.teller }, { $set: { status: "FREE" } });
 
     // Finalize the session log stats.
     const log = await ensureSessionLog(session._id, orgId);

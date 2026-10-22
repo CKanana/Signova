@@ -23,10 +23,8 @@ export type MessageSender = "USER" | "STAFF";
 
 export type TellerStatus = "FREE" | "BUSY" | "OFFLINE";
 
-/**
- * The translation contract. `alternatives` carries the model's top-k choices
- * with their confidences so the UI can offer retry/fallback on low confidence.
- */
+/** The translation contract. `alternatives` carries the model's top-k choices
+ * with their confidences so the UI can offer retry/fallback on low confidence. */
 export interface Translation {
   gloss: string;
   confidence: number; // 0..1
@@ -42,4 +40,16 @@ export interface MessageRecord {
   confidence?: number;
   isConfirmed: boolean;
   timestamp: string;
+}
+
+/** Public user returned by the auth endpoints (shared by staff + admin apps). */
+export interface PublicUser {
+  id: string;
+  organization: string;
+  role: Role;
+  name: string;
+  email?: string;
+  avatar?: string;
+  twoFactorEnabled: boolean;
+  isActive: boolean;
 }

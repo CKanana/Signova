@@ -23,6 +23,13 @@ export interface IOrganization {
    */
   restrictRegistrationByDomain: boolean;
   allowedEmailDomains: string[];
+  /**
+   * Audit flag for first-administrator bootstrap provisioning outside the
+   * normal staff domain policy. One-time use: set only when a bootstrap
+   * setup token is issued for the account in `bootstrapAdminEmail`.
+   */
+  bootstrapAdminEmail?: string;
+  bootstrapAdminException: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -42,6 +49,8 @@ const organizationSchema = new Schema<IOrganization>(
     logoUrl: { type: String },
     restrictRegistrationByDomain: { type: Boolean, default: false },
     allowedEmailDomains: { type: [String], default: [] },
+    bootstrapAdminEmail: { type: String },
+    bootstrapAdminException: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },

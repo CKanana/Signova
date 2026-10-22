@@ -8,9 +8,9 @@ import {
   refreshHandler,
   meHandler,
   changePasswordHandler,
-  registerHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
+  rejectPublicRegistrationHandler,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { authLimiter, forgotPasswordLimiter, resetPasswordLimiter } from "../middleware/rateLimit.js";
@@ -18,7 +18,7 @@ import { authLimiter, forgotPasswordLimiter, resetPasswordLimiter } from "../mid
 const router = Router();
 
 router.post("/login", authLimiter, loginHandler);
-router.post("/register", authLimiter, registerHandler);
+router.post("/register", authLimiter, rejectPublicRegistrationHandler);
 router.post("/forgot-password", forgotPasswordLimiter, forgotPasswordHandler);
 router.post("/reset-password", resetPasswordLimiter, resetPasswordHandler);
 router.post("/2fa/verify", authLimiter, verifyTwoFactorHandler);

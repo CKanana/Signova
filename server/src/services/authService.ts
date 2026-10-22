@@ -10,6 +10,7 @@ import { sendMail, buildResetEmail, buildWelcomeEmail } from "./mailService.js";
 import { recordAudit } from "./auditService.js";
 import { UnauthorizedError, BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
 import { config } from "../config/env.js";
+import { assertPasswordPolicy } from "../utils/passwordPolicy.js";
 import type { Request } from "express";
 import type { Types } from "mongoose";
 
@@ -18,7 +19,7 @@ const LOCK_MINUTES = 15;
 const REFRESH_TTL_DAYS = 7;
 
 export interface AuthResult {
-  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval";
+  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval" | "setup_required";
   challengeToken?: string;
   accessToken?: string;
   refreshToken?: string;
@@ -82,12 +83,20 @@ export async function login(email: string, password: string, req: Request): Prom
   }
 
   if (!user.isActive) {
+    if (!user.passwordHash) {
+      throw new UnauthorizedError(
+        "Account setup is incomplete. Use the setup link from your email.",
+        "ACCOUNT_SETUP_INCOMPLETE",
+      );
+    }
+
     if (!user.twoFactorEnabled) {
       throw new UnauthorizedError(
         "Your account is pending administrator approval. Please wait for an administrator to approve your account before signing in.",
         "ACCOUNT_PENDING_APPROVAL",
       );
     }
+
     throw new UnauthorizedError("Account is deactivated", "ACCOUNT_INACTIVE");
   }
 
@@ -208,6 +217,7 @@ export async function activateTwoFactorEnrollment(
 
   user.twoFactorEnabled = true;
   user.twoFactorConfirmedAt = new Date();
+  user.isActive = true;
   await user.save();
 
   await recordAudit({ action: "2FA_ENROLL_ACTIVATE", actor: user._id, organization: user.organization, req });
@@ -281,6 +291,7 @@ export async function changePassword(
   if (!user || !user.passwordHash) throw new NotFoundError("User not found");
   const ok = await verifyPassword(user.passwordHash, currentPassword);
   if (!ok) throw new UnauthorizedError("Current password is incorrect");
+  assertPasswordPolicy(newPassword);
   user.passwordHash = await hashPassword(newPassword);
   await user.save();
   await revokeAllRefreshTokens(userId);
@@ -336,6 +347,8 @@ export async function registerStaff(
   if (existing) {
     throw new ConflictError("An account with this email already exists");
   }
+
+  assertPasswordPolicy(input.password);
 
   const user = await User.create({
     organization: org._id,
@@ -493,6 +506,8 @@ export async function resetPassword(token: string, newPassword: string, req: Req
     // Should not happen (FK), but fail closed and release nothing further.
     throw new UnauthorizedError("This password-reset link is invalid or has expired.", "RESET_TOKEN_INVALID");
   }
+
+  assertPasswordPolicy(newPassword);
 
   user.passwordHash = await hashPassword(newPassword);
   await user.save();
