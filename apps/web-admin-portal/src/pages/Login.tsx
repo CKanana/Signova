@@ -38,42 +38,58 @@ export function Login() {
     setPasswordVisible(false);
   }, [twoFactorStage.kind]);
 
+  const [pending, setPending] = useState(false);
+
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
+    if (pending) return;
+    setPending(true);
     setLocalError(null);
     if (!isEmail(email)) {
+      setPending(false);
       setLocalError("Enter your work email address.");
       return;
     }
     if (password.length < 8) {
+      setPending(false);
       setLocalError("Passwords are at least 8 characters.");
       return;
     }
     await signIn(email.trim(), password);
+    setPending(false);
   }
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
+    if (pending) return;
+    setPending(true);
     setLocalError(null);
     if (!/^\d{6}$/.test(code)) {
+      setPending(false);
       setLocalError("Enter the 6-digit code from your authenticator app.");
       return;
     }
     await verifyTwoFactor(code);
+    setPending(false);
   }
 
   async function handleEnroll(e: React.FormEvent) {
     e.preventDefault();
+    if (pending) return;
+    setPending(true);
     setLocalError(null);
     if (twoFactorStage.kind !== "enroll" || !twoFactorStage.challengeToken) {
+      setPending(false);
       setLocalError("Missing enrollment session. Try again.");
       return;
     }
     if (!/^\d{6}$/.test(code)) {
+      setPending(false);
       setLocalError("Enter the 6-digit code from your authenticator app.");
       return;
     }
     await activateEnrollment(twoFactorStage.challengeToken, code);
+    setPending(false);
   }
 
   const errorMessage = localError ?? error;

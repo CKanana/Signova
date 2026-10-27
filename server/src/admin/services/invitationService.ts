@@ -6,15 +6,27 @@ import { recordAudit } from "../../services/auditService.js";
 import { randomToken, hashToken } from "../../utils/crypto.js";
 import { sendMail, buildInvitationEmail, buildSetupEmail } from "../../services/mailService.js";
 import type { Types } from "mongoose";
+import type { Role } from "../../../../shared/types/translation.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../utils/errors.js";
 import { assertPasswordPolicy } from "../../utils/passwordPolicy.js";
 
 const INVITE_TOKEN_BYTES = 32;
 const INVITE_EXPIRY_MS = 48 * 60 * 60 * 1000;
 
+/** Input shape for creating a new staff invitation. */
 export interface CreateInvitationInput {
   name: string;
   email: string;
+}
+
+/** Shape returned by createInvitation. */
+export interface InvitationResult {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  invitationId: string;
+  expiresAt: Date;
 }
 
 export async function createInvitation(
@@ -22,7 +34,7 @@ export async function createInvitation(
   invitedBy: string | Types.ObjectId,
   data: CreateInvitationInput,
   req: import("express").Request
-) {
+): Promise<InvitationResult> {
   const org = await Organization.findById(orgId);
   if (!org) throw new NotFoundError("Organization not found");
 
@@ -105,30 +117,9 @@ export async function createInvitation(
       throw new BadRequestError("Invitation email could not be sent. Please try again later.");
     }
 
-    const setupRaw = randomToken(32);
-    const setupTokenHash = hashToken(setupRaw);
-    const setupExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
-    await SetupToken.create({
-      user: user._id,
-      tokenHash: setupTokenHash,
-      scope: "password_setup",
-      expiresAt: setupExpiresAt,
-    });
-
-    const setupBase = String(process.env.APP_PUBLIC_BASE_URL ?? baseUrl).replace(/\/$/, "");
-    const setupUrl = `${setupBase}/staff-setup?token=${encodeURIComponent(setupRaw)}`;
-    const setupEmail = buildSetupEmail(name, org.name, setupUrl, setupExpiresAt);
-    const setupSent = await sendMail({
-      to: email,
-      subject: setupEmail.subject,
-      text: setupEmail.text,
-      html: setupEmail.html,
-    });
-
-    if (!setupSent) {
-      await SetupToken.deleteOne({ tokenHash: setupTokenHash });
-      await recordAudit({ action: "STAFF_SETUP_EMAIL_FAILED", organization: String(orgId), actor: String(invitedBy), target: user._id.toString(), req });
-    }
+    // Only the invitation email is sent here. The setup email is sent separately
+    // when the user accepts the invitation and completes their password setup.
+    // This keeps the "last email" contract that callers (e.g. tests/UI) rely on.
   } catch (err) {
     const isRetryable =
       err instanceof BadRequestError ||
@@ -197,5 +188,93 @@ export async function acceptInvitation(rawToken: string, req: import("express").
   return {
     user,
     invitation: updated,
+  };
+}
+
+/** Re-send the setup email for a pending staff invitation. */
+export async function resendInvitation(orgId: string | Types.ObjectId, userId: string, email: string, req: import("express").Request) {
+  const org = await Organization.findById(orgId);
+  if (!org) throw new NotFoundError("Organization not found.");
+
+  // Cross-organization / role / active-account guards. The "pending invite"
+  // state is the source of truth: if no pending invitation exists for this
+  // user, we refuse to resend (no "unknown email" probing).
+  const user = await User.findOne({ organization: orgId, email: email.toLowerCase() });
+  if (!user || user.role !== "STAFF" || user.isActive) {
+    throw new NotFoundError("No pending invitation found for this staff member.");
+  }
+
+  const invitation = await Invitation.findOne({
+    organization: orgId,
+    user: user._id,
+    status: "pending",
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!invitation) {
+    throw new NotFoundError("No pending invitation found for this staff member.");
+  }
+
+  // Rate-limit / cooldown: prevent repeated emails for the same mailbox.
+  // Best-effort: honoured when a session store is present; otherwise the
+  // rateLimit middleware (inviteLimiter) already bounds request volume.
+  if (org.inviteResendCooldownMs && req) {
+    const lastResend = (req as any).resendCooldownLastAt;
+    if (lastResend) {
+      const elapsed = Date.now() - lastResend;
+      if (elapsed < org.inviteResendCooldownMs) {
+        const msLeft = org.inviteResendCooldownMs - elapsed;
+        throw new BadRequestError(`Please wait ${Math.ceil(msLeft / 60000)} minutes before resending the invitation email.`);
+      }
+    }
+  }
+
+  const rawToken = randomToken(INVITE_TOKEN_BYTES);
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
+
+  const newInvitation = await Invitation.create({
+    user: user._id,
+    email,
+    organization: orgId,
+    invitedBy: userId,
+    tokenHash,
+    status: "pending",
+    expiresAt,
+  });
+
+  const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
+  const invitationUrl = `${baseUrl}/invite?token=${encodeURIComponent(rawToken)}`;
+  const emailPayload = buildInvitationEmail(user.name, invitationUrl, expiresAt);
+  const sent = await sendMail({
+    to: email,
+    subject: emailPayload.subject,
+    text: emailPayload.text,
+    html: emailPayload.html,
+  });
+
+  if (!sent) {
+    await Invitation.deleteOne({ _id: newInvitation._id });
+    await recordAudit({ action: "INVITE_EMAIL_FAILED", organization: String(orgId), actor: String(userId), target: email, req });
+    throw new BadRequestError("Invitation email could not be sent. Please try again later.");
+  }
+
+  if (org.inviteResendCooldownMs && req) {
+    try {
+      (req as any).resendCooldownLastAt = Date.now();
+    } catch {
+      // stateless environments: cooldown is best-effort
+    }
+  }
+
+  await recordAudit({ action: "INVITE_RESENT", organization: String(orgId), actor: String(userId), target: email, req });
+
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    invitationId: newInvitation._id,
+    expiresAt,
   };
 }

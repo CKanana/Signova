@@ -21,7 +21,7 @@ import {
   listAuditLogsHandler,
   getAuditLogsCountHandler,
 } from "../controllers/adminController.js";
-import { inviteStaffHandler, acceptInvitationHandler } from "../controllers/invitationController.js";
+import { inviteStaffHandler, acceptInvitationHandler, resendInvitationHandler } from "../controllers/invitationController.js";
 import { acceptStaffSetupHandler, activateStaffSetupHandler } from "../controllers/staffSetupController.js";
 import { inviteLimiter } from "../../middleware/rateLimit.js";
 import type { Request, Response } from "express";
@@ -30,6 +30,7 @@ const router = Router();
 
 // Staff invitations
 router.post("/staff/invite", inviteLimiter, inviteStaffHandler);
+router.post("/staff/invite/resend", inviteLimiter, resendInvitationHandler);
 router.post("/invitations/accept", inviteLimiter, acceptInvitationHandler);
 router.post("/staff/setup/accept", inviteLimiter, acceptStaffSetupHandler);
 router.post("/staff/setup/activate", inviteLimiter, activateStaffSetupHandler);

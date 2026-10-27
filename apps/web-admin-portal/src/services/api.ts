@@ -178,7 +178,10 @@ export const adminApi = {
   getStaff: (id: string) => request<{ staff: AdminUserSummary }>(`/api/admin/staff/${id}`),
 
   createStaff: (data: { name: string; email: string; phone?: string; role: Role }) =>
-    request<{ staff: AdminUserSummary }>("/api/admin/staff", { method: "POST", body: data }),
+    request<{ staff: AdminUserSummary; invitation: { id: string; name: string; email: string; role: Role; invitationId: string; expiresAt: string; invitedBy: string } | null }>(
+      "/api/admin/staff",
+      { method: "POST", body: data }
+    ),
 
   updateStaff: (id: string, data: { name?: string; email?: string; phone?: string; role?: Role }) =>
     request<{ staff: AdminUserSummary }>(`/api/admin/staff/${id}`, { method: "PUT", body: data }),
@@ -188,6 +191,12 @@ export const adminApi = {
 
   resetStaff2FA: (id: string) =>
     request<{ ok: boolean }>(`/api/admin/staff/${id}/2fa/reset`, { method: "POST" }),
+
+  resendInvitation: (id: string, email: string) =>
+    request<{ invitation: { id: string; name: string; email: string; role: Role; invitationId: string; expiresAt: string } }>(
+      `/api/admin/staff/${id}/invite/resend`,
+      { method: "POST", body: { email } },
+    ),
 
   // Teller management
   listTellers: (params?: { page?: number; pageSize?: number; status?: TellerStatus; search?: string }) =>

@@ -5,7 +5,8 @@ import { Session } from "../../models/session.js";
 import { AuditLog } from "../../models/auditLog.js";
 import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from "../../utils/errors.js";
 import type { Types } from "mongoose";
-import type { Role, TellerStatus } from "../../../../shared/types/translation.js";
+import type { Role, TellerStatus, AdminUserSummary } from "../../../../shared/types/translation.js";
+import { createInvitation } from "../services/invitationService.js";
 
 /** Admin service — org-scoped queries and mutations. */
 export async function getOrganization(orgId: string | Types.ObjectId) {
@@ -25,7 +26,7 @@ export async function listStaff(
     onlyInactive?: boolean;
     onlyPending?: boolean;
   } = {}
-): Promise<{ items: import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser>[]; total: number }> {
+): Promise<{ items: AdminUserSummary[]; total: number }> {
   const filter: Record<string, unknown> = { organization: orgId, role: { $in: ["STAFF", "ADMIN"] } };
   if (opts.onlyActive) filter.isActive = true;
   if (opts.onlyInactive) filter.isActive = false;
@@ -37,18 +38,43 @@ export async function listStaff(
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 50;
   const skip = (page > 0 ? page - 1 : 0) * pageSize;
-  const [items, total] = await Promise.all([
+  const [docs, total] = await Promise.all([
     User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
     User.countDocuments(filter),
   ]);
+  const items: AdminUserSummary[] = docs.map((u) => ({
+    id: u._id.toString(),
+    organization: u.organization.toString(),
+    role: u.role,
+    name: u.name,
+    email: u.email ?? undefined,
+    avatar: u.avatar ?? undefined,
+    twoFactorEnabled: u.twoFactorEnabled,
+    twoFactorConfirmedAt: u.twoFactorConfirmedAt?.toISOString(),
+    isActive: u.isActive,
+    createdAt: u.createdAt.toISOString(),
+  }));
   return { items, total };
 }
 
 export async function getStaff(
   orgId: string | Types.ObjectId,
   userId: string
-): Promise<import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser> | null> {
-  return User.findOne({ _id: userId, organization: orgId, role: { $in: ["STAFF", "ADMIN"] } });
+): Promise<AdminUserSummary | null> {
+  const user = await User.findOne({ _id: userId, organization: orgId, role: { $in: ["STAFF", "ADMIN"] } });
+  if (!user) return null;
+  return {
+    id: user._id.toString(),
+    organization: user.organization.toString(),
+    role: user.role,
+    name: user.name,
+    email: user.email ?? undefined,
+    avatar: user.avatar ?? undefined,
+    twoFactorEnabled: user.twoFactorEnabled,
+    twoFactorConfirmedAt: user.twoFactorConfirmedAt?.toISOString(),
+    isActive: user.isActive,
+    createdAt: user.createdAt.toISOString(),
+  };
 }
 
 export async function createStaff(
@@ -56,7 +82,7 @@ export async function createStaff(
   data: { name: string; email: string; phone?: string; role: Role },
   currentUserId: string,
   req: import("express").Request
-): Promise<import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser>> {
+): Promise<{ user: import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser>; invitation?: import("../services/invitationService.js").InvitationResult }> {
   const existing = await User.findOne({ organization: orgId, email: data.email.toLowerCase() });
   if (existing) throw new ConflictError("An account with this email already exists");
   if (data.role === "ADMIN") {
@@ -69,6 +95,8 @@ export async function createStaff(
       throw new ForbiddenError("Only an existing administrator can create another administrator");
     }
   }
+
+  // Create the user first so we can pass the ID to the invitation flow.
   const user = await User.create({
     organization: orgId,
     role: data.role,
@@ -76,8 +104,16 @@ export async function createStaff(
     email: data.email.toLowerCase(),
     phone: data.phone,
   });
+
+  // Create the invitation and send the initial setup email.
+  const invitation = await createInvitation(orgId, currentUserId, {
+    name: user.name,
+    email: user.email!,
+  }, req);
+
   await recordAdminAudit("STAFF_CREATE", orgId, currentUserId, user._id.toString(), req);
-  return user;
+
+  return { user, invitation };
 }
 
 export async function updateStaff(
@@ -86,7 +122,7 @@ export async function updateStaff(
   updates: Partial<{ name: string; email: string; phone: string; role: Role }>,
   currentUserId: string,
   req: import("express").Request
-): Promise<import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser>> {
+): Promise<AdminUserSummary> {
   if (updates.role) {
     const target = await User.findOne({
       _id: userId,
@@ -117,7 +153,18 @@ export async function updateStaff(
   );
   if (!user) throw new NotFoundError("Staff user not found");
   await recordAdminAudit("STAFF_UPDATE", orgId, currentUserId, user._id.toString(), req);
-  return user;
+  return {
+    id: user._id.toString(),
+    organization: user.organization.toString(),
+    role: user.role,
+    name: user.name,
+    email: user.email ?? undefined,
+    avatar: user.avatar ?? undefined,
+    twoFactorEnabled: user.twoFactorEnabled,
+    twoFactorConfirmedAt: user.twoFactorConfirmedAt?.toISOString(),
+    isActive: user.isActive,
+    createdAt: user.createdAt.toISOString(),
+  };
 }
 
 export async function setStaffActive(
@@ -126,7 +173,7 @@ export async function setStaffActive(
   active: boolean,
   currentUserId: string,
   req: import("express").Request
-): Promise<import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser>> {
+): Promise<AdminUserSummary> {
   const user = await User.findOneAndUpdate(
     { _id: userId, organization: orgId, role: { $in: ["STAFF", "ADMIN"] } },
     { isActive: active },
@@ -158,7 +205,19 @@ export async function setStaffActive(
     user._id.toString(),
     req
   );
-  return user;
+
+  return {
+    id: user._id.toString(),
+    organization: user.organization.toString(),
+    role: user.role,
+    name: user.name,
+    email: user.email ?? undefined,
+    avatar: user.avatar ?? undefined,
+    twoFactorEnabled: user.twoFactorEnabled,
+    twoFactorConfirmedAt: user.twoFactorConfirmedAt?.toISOString(),
+    isActive: user.isActive,
+    createdAt: user.createdAt.toISOString(),
+  };
 }
 
 export async function resetStaff2FA(

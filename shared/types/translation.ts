@@ -53,3 +53,18 @@ export interface PublicUser {
   twoFactorEnabled: boolean;
   isActive: boolean;
 }
+
+/** Staff user summary returned by the admin staff endpoints. Reuses the shared
+ *  shape so the admin portal and the server agree on `id` vs Mongoose `_id`. */
+export interface AdminUserSummary {
+  id: string;
+  organization: string;
+  role: Role;
+  name: string;
+  email?: string;
+  avatar?: string;
+  twoFactorEnabled: boolean;
+  twoFactorConfirmedAt?: string;
+  isActive: boolean;
+  createdAt: string;
+}

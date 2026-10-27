@@ -7,6 +7,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { adminApi, bindAuthAccessors, ApiError } from "../services/api";
 import type { AdminUserSummary, OrganizationProfile } from "../types/admin";
 
@@ -79,6 +80,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [twoFactorStage, setTwoFactorStage] = useState<TwoFactorStage>({ kind: "none" });
 
+  const navigate = useNavigate();
+
   const accessTokenRef = useRef<string | null>(readStorage(ACCESS_KEY));
   const refreshTokenRef = useRef<string | null>(readStorage(REFRESH_KEY));
   const refreshingRef = useRef<Promise<boolean> | null>(null);
@@ -92,6 +95,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setUser(nextUser);
     setError(null);
     setTwoFactorStage({ kind: "none" });
+    console.log("[auth] storeSession", { userId: nextUser.id, role: nextUser.role });
   }, []);
 
   const dropSession = useCallback(() => {
@@ -140,23 +144,44 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   // Initial session hydration
   const reloadUser = useCallback(async () => {
     if (!accessTokenRef.current) {
+      console.log("[auth] admin reloadUser skip: no access token");
       setIsLoading(false);
       return;
     }
     try {
       const res = await adminApi.me();
+      console.log("[auth] admin reloadUser me", { hasUser: Boolean(res.user), role: res.user?.role });
       if (res.user && res.user.role === "ADMIN") {
         setUser(res.user);
         writeStorage(USER_KEY, JSON.stringify(res.user));
       } else {
+        console.log("[auth] admin reloadUser reject", { role: res.user?.role });
         dropSession();
       }
-    } catch {
-      dropSession();
+    } catch (err: any) {
+      console.log("[auth] admin reloadUser me error", { message: err?.message });
+      const refreshed = await tryRefresh();
+      console.log("[auth] admin reloadUser refresh", { refreshed });
+      if (refreshed) {
+        try {
+          const retry = await adminApi.me();
+          console.log("[auth] admin reloadUser me after refresh", { hasUser: Boolean(retry.user), role: retry.user?.role });
+          if (retry.user && retry.user.role === "ADMIN") {
+            setUser(retry.user);
+            writeStorage(USER_KEY, JSON.stringify(retry.user));
+          } else {
+            dropSession();
+          }
+        } catch {
+          dropSession();
+        }
+      } else {
+        dropSession();
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [dropSession]);
+  }, [dropSession, tryRefresh]);
 
   useEffect(() => {
     reloadUser();
@@ -167,6 +192,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setIsSubmitting(true);
     try {
       const res = await adminApi.login(email, password);
+      console.log("[auth] admin login", { status: res.status, hasUser: Boolean(res.user), hasChallenge: Boolean(res.challengeToken) });
 
       if (res.status === "pending_approval") {
         setError(res.message ?? "This administrator account is pending approval.");
@@ -200,6 +226,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     } catch (err: any) {
       const msg = err?.message ?? "Sign-in failed. Please verify your credentials.";
       setError(msg);
+      console.log("[auth] admin login error", { message: msg });
       throw err;
     } finally {
       setIsSubmitting(false);
@@ -212,18 +239,27 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setIsSubmitting(true);
     try {
       const res = await adminApi.verify2FA(twoFactorStage.challengeToken, code);
+      console.log("[auth] verify2FA", {
+        status: res.status,
+        hasAccessToken: !!res.accessToken,
+        hasRefreshToken: !!res.refreshToken,
+        hasUser: !!(res.user && res.user.role),
+        userRole: res.user?.role,
+      });
       if (res.user.role !== "ADMIN") {
         throw new Error("Access denied: only administrators may access the Admin Portal.");
       }
       storeSession(res.accessToken, res.refreshToken, res.user);
+      navigate("/admin/overview", { replace: true });
     } catch (err: any) {
       const msg = err?.message ?? "Invalid verification code. Please check your authenticator.";
       setError(msg);
+      console.log("[auth] admin verify2FA error", { message: msg });
       throw err;
     } finally {
       setIsSubmitting(false);
     }
-  }, [twoFactorStage, storeSession]);
+  }, [twoFactorStage, storeSession, navigate]);
 
   const activateEnrollment = useCallback(async (challengeToken: string, code: string) => {
     if (twoFactorStage.kind !== "enroll") return;

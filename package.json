@@ -7,6 +7,7 @@
   },
   "workspaces": [
     "apps/*",
+    "shared/app-shell",
     "server"
   ],
   "overrides": {

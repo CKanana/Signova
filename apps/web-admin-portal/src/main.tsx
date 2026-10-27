@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { applyWebTheme } from "../../../shared/constants/theme";
 import "../../../shared/constants/web-theme.css";
 import "./styles/admin.css";
+import "./styles/admin-theme.css";
 import App from "./App";
 
 applyWebTheme(document.documentElement);

@@ -42,11 +42,7 @@ export interface AuthResult {
   message?: string;
 }
 
-/**
- * Full session record as returned by the staff-facing endpoints. The
- * backend may return `teller`/`deafUser` either as raw ids or populated
- * documents, so both shapes are accepted.
- */
+/** Full session record as returned by the staff-facing endpoints. */
 export interface SessionDetail {
   _id: string;
   organization: string;
@@ -167,20 +163,6 @@ export const api = {
       auth: false,
     }),
 
-  staffSetupAccept: (token: string, password: string) =>
-    request<{ status: "mfa_enroll_required"; challengeToken: string; user: { id: string; name: string; email?: string } }>("/api/admin/staff/setup/accept", {
-      method: "POST",
-      body: { token, password },
-      auth: false,
-    }),
-
-  staffSetupEnrollStart: (challengeToken: string) =>
-    request<{ secret: string; otpauthUrl: string; qrDataUrl: string }>("/api/admin/2fa/enroll/start", {
-      method: "POST",
-      body: { challengeToken },
-      auth: false,
-    }),
-
   staffSetupEnrollActivate: (challengeToken: string, code: string) =>
     request<{ status: "authenticated"; accessToken: string; refreshToken: string; user: any }>("/api/admin/staff/setup/activate", {
       method: "POST",
@@ -225,20 +207,6 @@ export const api = {
     request<{ ok: boolean }>("/api/auth/change-password", {
       method: "POST",
       body: { currentPassword, newPassword },
-    }),
-
-  staffSetupAccept: (token: string, password: string) =>
-    request<{ status: "mfa_enroll_required"; challengeToken: string; user: { id: string; name: string; email?: string } }>("/api/admin/staff/setup/accept", {
-      method: "POST",
-      body: { token, password },
-      auth: false,
-    }),
-
-  staffSetupEnrollStart: (challengeToken: string) =>
-    request<{ secret: string; otpauthUrl: string; qrDataUrl: string }>("/api/admin/2fa/enroll/start", {
-      method: "POST",
-      body: { challengeToken },
-      auth: false,
     }),
 
   /* ---------- Organization + tellers (staff-role reads) ---------- */

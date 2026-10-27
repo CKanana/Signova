@@ -1,0 +1,184 @@
+/**
+ * Signova Admin Portal — Theme System & Collapsible Shell
+ *
+ * Extends the admin design system (admin-portal.css) with:
+ *  - Dark mode (admin-dark class on :root) with deep charcoal/plum surfaces,
+ *    elevated dark cards, light text, and restrained purple accents.
+ *  - Collapsible sidebar with expand/collapse control, keyboard support,
+ *    tooltips when collapsed (via aria-label / title), active-route
+ *    indication, and persistence.
+ *  - Responsive behaviour for narrow viewports.
+ *
+ * To enable: ensure admin-portal.css is imported before this file in main.tsx.
+ */
+
+/* ==========================================================================
+   Dark Theme
+   ========================================================================== */
+
+.admin-dark {
+  --admin-bg: #1b1726;          /* deep charcoal/plum page surface */
+  --admin-surface: #241f33;     /* elevated dark card */
+  --admin-surface-muted: #2a2438;
+  --admin-surface-elevated: #2d2741;
+
+  --admin-text: #e6e1ee;        /* light readable text */
+  --admin-text-secondary: #c6c0d4;
+  --admin-text-muted: #9a93ad;
+
+  --admin-border: #3a334a;
+  --admin-border-subtle: #2e2840;
+  --admin-border-strong: #4a4160;
+
+  --admin-primary: #7b4fc4;
+  --admin-primary-hover: #9a6cd0;
+  --admin-primary-active: #6a3db8;
+  --admin-primary-soft: #3a2c55;
+  --admin-primary-border: #5c4286;
+
+  --admin-teal: #4fb8b8;
+  --admin-teal-hover: #3da3a3;
+  --admin-teal-soft: #2a3534;
+  --admin-teal-border: #3a5e5e;
+
+  --admin-success: #4fb89a;
+  --admin-success-soft: #2a3f38;
+  --admin-success-border: #3a6e5e;
+
+  --admin-warning: #e8a33d;
+  --admin-warning-soft: #3a2f1f;
+  --admin-warning-border: #6e542a;
+
+  --admin-danger: #e0706a;
+  --admin-danger-soft: #3a2826;
+  --admin-danger-border: #6e3a36;
+
+  --admin-info: #5b8fc4;
+  --admin-info-soft: #2a384f;
+  --admin-info-border: #4a6e8a;
+
+  --admin-corn: #f8eed4;
+
+  --admin-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --admin-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --admin-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --admin-shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.6);
+
+  --admin-focus-ring: 0 0 0 3px rgba(123, 79, 196, 0.35);
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Collapsible Sidebar controls
+   ========================================================================== */
+
+/* Collapse toggle button (overlay, visible in both modes). */
+.admin-sidebar__toggle-wrap {
+  position: relative;
+}
+
+.admin-sidebar__toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface-muted);
+  color: var(--admin-text-secondary);
+  border: 1px solid var(--admin-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.admin-sidebar__toggle:hover {
+  background: var(--admin-primary-soft);
+  color: var(--admin-primary);
+}
+
+/* Collapse hint (always visible for discoverability in collapsed mode). */
+.admin-sidebar__collapse-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--admin-text-secondary);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: var(--admin-radius-md);
+  transition: background-color 120ms ease;
+}
+
+.admin-sidebar__collapse-hint:hover {
+  background-color: var(--admin-surface-muted);
+}
+
+/* Logout confirmation button (hidden by default; shown via inline style
+ * when the user clicks "Sign out", providing a keyboard-accessible
+ * confirm target). */
+.admin-sidebar__logout-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+.admin-sidebar__logout-btn {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  padding: 10px 16px;
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-danger);
+  color: #fff;
+  border: 1px solid var(--admin-danger-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.admin-sidebar__logout-btn:hover {
+  background: var(--admin-danger);
+}
+
+/* ==========================================================================
+   Responsive behaviour
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .admin-sidebar {
+    width: var(--admin-sidebar-collapsed-width);
+  }
+
+  .admin-sidebar__header,
+  .admin-nav-group__label,
+  .admin-sidebar__org-card,
+  .admin-user-info,
+  .admin-brand__text {
+    display: none;
+  }
+
+  .admin-sidebar__nav {
+    padding: 8px 4px;
+    align-items: center;
+  }
+
+  .admin-nav-item {
+    padding: 10px;
+    justify-content: center;
+  }
+
+  .admin-content {
+    padding: 16px;
+  }
+
+  .admin-topbar {
+    padding: 0 16px;
+  }
+}

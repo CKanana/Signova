@@ -30,7 +30,7 @@ export function Staff() {
   const [staff, setStaff] = useState<AdminUserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: "success" | "danger"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -51,6 +51,13 @@ export function Staff() {
   const [confirmAction, setConfirmAction] = useState<"activate" | "deactivate" | "reset2fa" | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Invitation-state tracking (backend is the source of truth).
+  // pendingInvites[uid] = { invitationId, expiresAt } when a pending setup email
+  // is outstanding. The backend returns 200 only when a pending invitation exists.
+  const [pendingInvites, setPendingInvites] = useState<Record<string, { invitationId: string; expiresAt: string }>>({});
+  const [resendErrors, setResendErrors] = useState<Record<string, string | null>>({});
+  const [resendLoading, setResendLoading] = useState<Record<string, boolean>>({});
+
   const loadStaff = async () => {
     setLoading(true);
     setError(null);
@@ -64,6 +71,23 @@ export function Staff() {
         onlyInactive: statusFilter === "inactive" ? true : undefined,
       });
       setStaff(res.items);
+      // Best-effort: probe pending invitations once per staff member.
+      // The backend is the single source of truth for whether an invitation
+      // is outstanding, so a 404/400 means "no pending invite".
+      const next: Record<string, { invitationId: string; expiresAt: string }> = {};
+      const errors: Record<string, string | null> = {};
+      for (const s of res.items) {
+        try {
+          const { invitation } = await adminApi.resendInvitation(s.id, s.email!);
+          next[s.id] = { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt };
+          errors[s.id] = null;
+        } catch (err: any) {
+          // 404/400 => no pending invitation. Not an error for our purposes.
+          errors[s.id] = err?.message ?? null;
+        }
+      }
+      setPendingInvites(next);
+      setResendErrors(errors);
     } catch (err: any) {
       setError(err?.message ?? "Failed to load staff list.");
     } finally {
@@ -78,25 +102,40 @@ export function Staff() {
     return () => clearTimeout(timer);
   }, [search, statusFilter, roleFilter]);
 
+  const isInviteExpired = (expiredAt: string, now = Date.now()): boolean => {
+    const t = Date.parse(expiredAt);
+    return !isNaN(t) && t <= now;
+  };
+
   const handleCreateStaff = async (e: FormEvent) => {
     e.preventDefault();
     setCreateError(null);
     setCreateLoading(true);
     try {
-      await adminApi.createStaff({
+      const res = await adminApi.createStaff({
         name: createName.trim(),
         email: createEmail.trim(),
         phone: createPhone.trim() || undefined,
         role: createRole,
       });
+      // Only report success if the backend confirmed the invitation email was
+      // delivered. If sendMail failed (SMTP misconfigured), the backend returns a
+      // 400 and the account is rolled back, so we surface the real error instead
+      // of claiming "Invitation sent" when the user never received a link.
+      if (res.invitation) {
+        setFeedback({ type: "success", message: `Staff account created for ${createName}. Invitation email sent — check your inbox (including spam).` });
+      } else {
+        // Account created but no invitation (e.g. SMTP down) — tell the admin honestly.
+        setFeedback({ type: "warning", message: `Staff account created for ${createName}. An invitation email could not be sent (mail transport unavailable). Use "Resend invite" once SMTP is fixed.` });
+      }
       setIsCreateOpen(false);
       setCreateName("");
       setCreateEmail("");
       setCreatePhone("");
       setCreateRole("STAFF");
-      setFeedback({ type: "success", message: `Staff account created for ${createName}.` });
       loadStaff();
     } catch (err: any) {
+      // Backend already rolled back the account if the email failed; surface it.
       setCreateError(err?.message ?? "Failed to create staff member.");
     } finally {
       setCreateLoading(false);
@@ -128,6 +167,24 @@ export function Staff() {
       setFeedback({ type: "danger", message: err?.message ?? "Action failed." });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const resendInviteFor = async (uid: string, email: string) => {
+    if (resendLoading[uid]) return;
+    setResendLoading((prev) => ({ ...prev, [uid]: true }));
+    setResendErrors((prev) => ({ ...prev, [uid]: null }));
+    try {
+      const { invitation } = await adminApi.resendInvitation(uid, email);
+      setPendingInvites((prev) => ({ ...prev, [uid]: { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt } }));
+      setStaff((prev) => prev.map((s) => (s.id === uid ? { ...s, email } : s)));
+      setFeedback({ type: "success", message: `Resent the setup email to ${email}. Check your inbox (including spam).` });
+    } catch (err: any) {
+      // 404/400 => no pending invitation (already accepted or expired).
+      setResendErrors((prev) => ({ ...prev, [uid]: err?.message ?? "Not available for this staff member." }));
+      setFeedback({ type: "warning", message: err?.message ?? "No pending invitation to resend." });
+    } finally {
+      setResendLoading((prev) => ({ ...prev, [uid]: false }));
     }
   };
 
@@ -276,6 +333,14 @@ export function Staff() {
             <tbody>
               {staff.map((s) => {
                 const isSelf = s.id === currentAdmin?.id;
+                // Interpret invitation state (backend source of truth).
+                const pending = pendingInvites[s.id];
+                const inviteStatus =
+                  pending && !isInviteExpired(pending.expiresAt) ? "pending" :
+                  pending ? "expired" : null;
+                const hasPending = !!pending && !isInviteExpired(pending.expiresAt);
+                const hasExpired = !!pending && isInviteExpired(pending.expiresAt);
+
                 return (
                   <tr key={s.id}>
                     <td>
@@ -331,6 +396,16 @@ export function Staff() {
                                 title="Reset 2FA credentials"
                               >
                                 Reset 2FA
+                              </button>
+                            )}
+
+                            {!isSelf && s.isActive && (
+                              <button
+                                className="admin-btn admin-btn--ghost admin-btn--sm"
+                                onClick={() => resendInviteFor(s.id, s.email!)}
+                                disabled={resendLoading[s.id]}
+                              >
+                                {resendLoading[s.id] ? "Resending…" : hasPending ? "Resent" : hasExpired ? "Re-invite" : "Resend Setup Email"}
                               </button>
                             )}
                           </>

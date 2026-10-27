@@ -1,0 +1,23 @@
+{
+  "name": "@signova/app-shell",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Shared collapsible sidebar + top bar shell with light/dark theme (Admin + Hearing Staff)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./useTheme": "./src/useTheme.ts",
+    "./AppShell": "./src/AppShell.tsx",
+    "./Sidebar": "./src/Sidebar.tsx",
+    "./Topbar": "./src/Topbar.tsx",
+    "./app-shell.css": "./src/app-shell.css"
+  },
+  "files": ["src"]
+}
