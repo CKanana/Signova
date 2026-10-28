@@ -420,13 +420,10 @@ a:hover {
 
 /* Main Content Area */
 .admin-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   min-width: 0;
-  min-height: 100vh;
 }
 
+/* Top header: spans the full content column (no centering). */
 .admin-topbar {
   height: var(--admin-topbar-height);
   background-color: var(--admin-surface);
@@ -479,12 +476,16 @@ a:hover {
   background-color: var(--admin-teal);
 }
 
+/* Page content: the remaining viewport width, behind the header and the
+ * page body. It fills the space beside the sidebar (a flex item of
+ * .admin-body). It is NOT itself a flex item — removing flex: 1
+ * eliminates the competing-width bug and the right-side blank area. */
 .admin-content {
-  flex: 1;
-  padding: 28px;
-  max-width: var(--admin-max-width);
   width: 100%;
+  max-width: var(--admin-max-width);
   margin: 0 auto;
+  padding: 28px;
+  box-sizing: border-box;
 }
 
 /* ==========================================================================

@@ -1,16 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Navigate } from "react-router-dom";
 import { useStaffAuth } from "../context/AuthContext";
-import { staffApi } from "../services/api";
 import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/States";
 import { IconEye } from "../components/ui/Icons";
-import brandIcon from "/signova-mark-purple.png";
+import brandIcon from "../assets/brand/signova-mark-purple.png";
 
 type SetupStage = "password" | "enroll" | "done";
 
 export function StaffSetup() {
-  const { twoFactorStage, error, isSubmitting, activateEnrollment, cancelTwoFactor } = useStaffAuth();
+  const { loginStage, loginError, isSubmitting, confirmStaffSetup, cancelStaffSetup, startStaffSetup } = useStaffAuth();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
 
@@ -19,32 +18,34 @@ export function StaffSetup() {
   const [code, setCode] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [stage, setStage] = useState<SetupStage>("password");
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     setLocalError(null);
     setPassword("");
     setConfirm("");
+    setPasswordVisible(false);
   }, [token]);
 
   const challengeToken = useMemo(() => {
-    if (twoFactorStage.kind === "enroll" && twoFactorStage.challengeToken) {
-      return twoFactorStage.challengeToken;
+    if (loginStage?.kind === "staff-setup" && loginStage.challengeToken) {
+      return loginStage.challengeToken;
     }
     return null;
-  }, [twoFactorStage]);
+  }, [loginStage]);
 
   useEffect(() => {
-    if (twoFactorStage.kind === "enroll" && challengeToken) {
+    if (loginStage?.kind === "staff-setup" && challengeToken) {
       setStage("enroll");
     }
-  }, [twoFactorStage, challengeToken]);
+  }, [loginStage, challengeToken]);
 
   if (!token) {
     return <Navigate to="/login" replace />;
   }
 
-  const errorMessage = localError ?? error;
+  const errorMessage = localError ?? loginError;
 
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,10 +59,7 @@ export function StaffSetup() {
       return;
     }
     try {
-      const res = await staffApi.staffSetupAccept(token!, password);
-      if (res.status === "mfa_enroll_required" && res.challengeToken) {
-        await staffApi.staffSetupEnrollStart(res.challengeToken);
-      }
+      await startStaffSetup(token!, password);
     } catch (err: any) {
       setLocalError(err?.message ?? "Setup failed. Use the link from your email.");
     }
@@ -72,7 +70,7 @@ export function StaffSetup() {
     setLocalError(null);
     if (!challengeToken) return;
     try {
-      await activateEnrollment("000000");
+      await confirmStaffSetup(code);
     } catch (err: any) {
       setLocalError(err?.message ?? "Failed to activate two-factor authentication. Please check your code.");
     }
@@ -109,7 +107,7 @@ export function StaffSetup() {
               <Button type="submit" block loading={isSubmitting}>
                 {isSubmitting ? "Activating..." : "Activate and sign in"}
               </Button>
-              <Button variant="ghost" block onClick={cancelTwoFactor}>
+              <Button variant="ghost" block onClick={cancelStaffSetup}>
                 Start over
               </Button>
             </div>

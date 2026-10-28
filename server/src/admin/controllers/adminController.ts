@@ -99,9 +99,9 @@ const listStaffQuerySchema = z.object({
   search: z.string().max(100).optional(),
   role: z.enum(["STAFF", "ADMIN"]).optional(),
   status: z.enum(["active", "inactive", "pending"]).optional(),
-  onlyActive: z.boolean().optional(),
-  onlyInactive: z.boolean().optional(),
-  onlyPending: z.boolean().optional(),
+  onlyActive: z.coerce.boolean().optional(),
+  onlyInactive: z.coerce.boolean().optional(),
+  onlyPending: z.coerce.boolean().optional(),
 });
 
 export async function listStaffHandler(req: Request, res: Response): Promise<void> {
@@ -128,8 +128,20 @@ export async function createStaffHandler(req: Request, res: Response): Promise<v
     })
     .parse(req.body);
 
-  const user = await adminService.createStaff(req.auth!.orgId, body, req.auth!.sub, req);
-  res.status(201).json({ staff: user });
+  const { user, invitation } = await adminService.createStaff(req.auth!.orgId, body, req.auth!.sub, req);
+  res.status(201).json({
+    staff: user,
+    invitation: invitation
+      ? {
+          id: invitation.id,
+          name: invitation.name,
+          email: invitation.email,
+          role: invitation.role,
+          invitationId: invitation.invitationId,
+          expiresAt: invitation.expiresAt,
+        }
+      : null,
+  });
 }
 
 export async function getStaffHandler(req: Request, res: Response): Promise<void> {
