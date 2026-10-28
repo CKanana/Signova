@@ -4,6 +4,8 @@ import { resendInvitation } from "../services/invitationService.js";
 import { acceptInvitation } from "../services/invitationService.js";
 import { recordAudit } from "../../services/auditService.js";
 import { BadRequestError, NotFoundError } from "../../utils/errors.js";
+import { User } from "../../models/user.js";
+import * as adminService from "../services/adminService.js";
 
 /** Input shape for resending a staff invitation setup email. */
 const resendSchema = z.object({
@@ -40,7 +42,7 @@ export async function resendInvitationHandler(req: Request, res: Response): Prom
     const isNotFound = err instanceof NotFoundError;
     const isBadRequest = err instanceof BadRequestError;
     await recordAudit({
-      action: isNotFound ? "INVITE_RESENT_NOT_FOUND" : "INVITE_RESENT_FAILED",
+      action: isNotFound ? "INVITE_ACCEPTED" : "INVITE_EMAIL_FAILED",
       organization: String(organization),
       actor,
       target: body.email,
@@ -62,7 +64,7 @@ export async function resendInvitationHandler(req: Request, res: Response): Prom
 export async function acceptInvitationHandler(req: Request, res: Response): Promise<void> {
   const token = (req.body as { token?: string })?.token;
   if (!token) {
-    await recordAudit({ action: "INVITE_ACCEPT_MISSING_TOKEN", organization: String(req.auth?.orgId ?? ""), target: "", req });
+    await recordAudit({ action: "INVITE_ACCEPT_UNKNOWN_TOKEN", organization: String(req.auth?.orgId ?? ""), target: "", req });
     res.status(400).json({ error: "Missing invitation token." });
     return;
   }
@@ -96,7 +98,8 @@ export async function inviteStaffHandler(req: Request, res: Response): Promise<v
   const organization = req.auth!.orgId;
   const actor = req.auth!.sub;
 
-  const existing = await adminService.User.findOne({
+  // Reject duplicate email.
+  const existing = await User.findOne({
     organization: organization,
     email: body.email.toLowerCase(),
   });
@@ -106,8 +109,9 @@ export async function inviteStaffHandler(req: Request, res: Response): Promise<v
     return;
   }
 
+  // Admins may only create other admins when an existing admin is present.
   if (body.role === "ADMIN") {
-    const existingAdmin = await adminService.User.findOne({
+    const existingAdmin = await User.findOne({
       organization: organization,
       role: "ADMIN",
       _id: { $ne: actor },

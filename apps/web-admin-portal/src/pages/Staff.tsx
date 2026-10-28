@@ -78,7 +78,7 @@ export function Staff() {
       const errors: Record<string, string | null> = {};
       for (const s of res.items) {
         try {
-          const { invitation } = await adminApi.resendInvitation(s.id, s.email!);
+          const { invitation } = await adminApi.resendInvitation(s.email!);
           next[s.id] = { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt };
           errors[s.id] = null;
         } catch (err: any) {
@@ -175,7 +175,7 @@ export function Staff() {
     setResendLoading((prev) => ({ ...prev, [uid]: true }));
     setResendErrors((prev) => ({ ...prev, [uid]: null }));
     try {
-      const { invitation } = await adminApi.resendInvitation(uid, email);
+      const { invitation } = await adminApi.resendInvitation(email);
       setPendingInvites((prev) => ({ ...prev, [uid]: { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt } }));
       setStaff((prev) => prev.map((s) => (s.id === uid ? { ...s, email } : s)));
       setFeedback({ type: "success", message: `Resent the setup email to ${email}. Check your inbox (including spam).` });

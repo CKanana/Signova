@@ -192,9 +192,9 @@ export const adminApi = {
   resetStaff2FA: (id: string) =>
     request<{ ok: boolean }>(`/api/admin/staff/${id}/2fa/reset`, { method: "POST" }),
 
-  resendInvitation: (id: string, email: string) =>
+  resendInvitation: (email: string) =>
     request<{ invitation: { id: string; name: string; email: string; role: Role; invitationId: string; expiresAt: string } }>(
-      `/api/admin/staff/${id}/invite/resend`,
+      `/api/admin/staff/invite/resend`,
       { method: "POST", body: { email } },
     ),
 

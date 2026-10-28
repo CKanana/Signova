@@ -1,64 +1,71 @@
-// Shared light/dark theme hook.
-//
-// Values "light" | "dark". Defaults to prefers-color-scheme, then the
-// user's saved choice (localStorage key "signova-theme", shared by both
-// apps). The host app applies the theme via data-theme on the document
-// root BEFORE first paint using an inline script in index.html, so there
-// is no white flash on reload in dark mode.
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 
-import { useState, useEffect, useCallback } from "react";
-
-/** Light / dark theme values */
 export type Theme = "light" | "dark";
-
-/** Storage key shared by both apps (per the spec) */
 export const THEME_STORAGE_KEY = "signova-theme";
 
-/**
- * Reads the persisted theme, falling back to the system preference.
- * Callers should pass `initialTheme` to AppShell so the theme is
- * applied before first paint (see the index.html inline script).
- */
-export function getInitialTheme(): Theme {
+function readStored(): Theme | null {
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
+    const v = localStorage.getItem(THEME_STORAGE_KEY);
+    return v === "light" || v === "dark" ? v : null;
   } catch {
-    // localStorage unavailable
+    return null;
   }
-  return window.matchMedia("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
 }
 
-/**
- * Syncs the theme on the document root via data-theme so both apps see
- * the same value. The host app MUST set data-theme on <html> before
- * first paint (inline script in index.html) — this hook only re-syncs
- * when the value changes.
- */
-export function useTheme(initialTheme?: Theme) {
-  const [theme, setTheme] = useState<Theme>(() =>
-    initialTheme ?? getInitialTheme()
+export function getInitialTheme(): Theme {
+  return (
+    readStored() ??
+    (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light")
   );
+}
 
-  const set = useCallback((next: Theme) => {
-    setTheme(next);
+export function applyTheme(theme: Theme): void {
+  document.documentElement.setAttribute("data-theme", theme);
+}
+
+export function useTheme() {
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+
+  // Write data-theme on <html> so CSS (and portalled modals) can react.
+  useLayoutEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const setTheme = useCallback((next: Theme) => {
+    setThemeState(next);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {
-      // localStorage unavailable
+      /* storage unavailable */
     }
   }, []);
 
+  const toggle = useCallback(
+    () => setTheme(theme === "dark" ? "light" : "dark"),
+    [theme, setTheme]
+  );
+
+  // Follow the system setting only until the user picks a theme.
   useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => {
-      if (!localStorage.getItem(THEME_STORAGE_KEY)) {
-        set(e.matches ? "dark" : "light");
-      }
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!media) return;
+    const onChange = (e: MediaQueryListEvent) => {
+      if (!readStored()) setThemeState(e.matches ? "dark" : "light");
     };
-    media.addEventListener("change", handler);
-    return () => media.removeEventListener("change", handler);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
   }, []);
 
-  return { theme, setTheme, set };
+  // Keep the Admin and Staff apps in sync across tabs.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === THEME_STORAGE_KEY && (e.newValue === "light" || e.newValue === "dark")) {
+        setThemeState(e.newValue);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  return { theme, setTheme, toggle };
 }

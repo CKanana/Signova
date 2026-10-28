@@ -4,6 +4,7 @@ import { applyWebTheme } from "../../../shared/constants/theme";
 import "../../../shared/constants/web-theme.css";
 import "./styles/admin.css";
 import "./styles/admin-theme.css";
+import "../../../shared/app-shell/src/app-shell.css";
 import App from "./App";
 
 applyWebTheme(document.documentElement);

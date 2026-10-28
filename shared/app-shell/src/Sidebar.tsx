@@ -1,92 +1,46 @@
-// Shared collapsible sidebar.
-//
-// Both Admin and Hearing Staff pass configuration (brand, organisation,
-// identity, nav sections with items + optional badge counts, footer slot).
-// No markup — every page renders inside the shared AppShell.
+import type { ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
 
-import { useState, type ReactNode } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-
-/** Navigation item: label, icon, route, optional badge count */
 export interface NavItem {
-  id: string;
+  id: string; // route path, e.g. "/admin/staff"
   label: string;
   icon: ReactNode;
   badge?: number;
 }
-
-/** Organisation card info (optional) */
+export interface NavSection {
+  label: string;
+  items: NavItem[];
+}
 export interface Organisation {
   name: string;
   serviceName?: string;
 }
-
-/** User identity (optional) */
 export interface User {
   name: string;
   role: string;
   initials: string;
 }
+export type SidebarFooterProps = ReactNode;
 
-/** Sidebar footer slot children (optional, e.g. Staff teller availability) */
-export interface SidebarFooterProps {
-  children?: ReactNode;
-}
-
-/** Navigation sections: { label, items } */
-export interface NavSections {
-  label: string;
-  items: NavItem[];
-}
-
-/** Configuration injected by the host app, never markup */
 export interface SidebarProps {
-  /** App name overlayed on the logo ("ADMIN PORTAL" / "STAFF DESK") */
   brandLabel: string;
-  /** Organisation card (Admin only) */
+  /** Real Signova mark; shown white on the purple sidebar. Falls back to "S". */
+  logoSrc?: string;
   organisation?: Organisation;
-  /** User card (Admin only) – name, role, initials */
   user?: User;
-  /** Navigation sections with items */
-  navSections: NavSections[];
-  /** Sidebar footer slots (required for Staff teller availability) */
+  onSignOut?: () => void;
+  navSections: NavSection[];
   footer?: SidebarFooterProps;
-  /** Collapsed state */
   collapsed: boolean;
-  /** Toggle collapse/expand */
-  onToggleCollapse: () => void;
-  /** Open the off-canvas drawer (below 760px) */
-  onOpenDrawer: () => void;
-  /** Drawer open state */
   isDrawerOpen: boolean;
-  /** Close the drawer */
-  onCloseDrawer: () => void;
+  onToggleCollapse: () => void;
 }
 
-/**
- * Collapsible sidebar.
- *
- * - Expands to 260px, collapses to 84px.
- * - Stores the preference in sessionStorage (try/catch).
- * - Under 980px: auto-collapses.
- * - Under 760px: off-canvas drawer opened by the top bar menu button
- *   (backdrop + Escape to close).
- * - Keyboard accessible: real buttons, focus ring, aria-current.
- */
 export function Sidebar({
-  brandLabel,
-  organisation,
-  user,
-  navSections,
-  footer,
-  collapsed,
-  onToggleCollapse,
-  onOpenDrawer,
-  isDrawerOpen,
-  onCloseDrawer,
+  brandLabel, logoSrc, organisation, user, onSignOut,
+  navSections, footer, collapsed, isDrawerOpen, onToggleCollapse,
 }: SidebarProps) {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const { pathname } = useLocation();
 
   return (
     <aside
@@ -95,13 +49,16 @@ export function Sidebar({
       }`}
       aria-label="Main navigation"
     >
-      {/* Brand lockup */}
       <div className="app-sidebar__header">
         <div className="app-sidebar__logo">
-          <span className="app-sidebar__logo-mark">S</span>
+          {logoSrc ? (
+            <img className="app-sidebar__logo-img" src={logoSrc} alt="Signova" />
+          ) : (
+            <span className="app-sidebar__logo-mark">S</span>
+          )}
           <span className="app-sidebar__logo-text">
             <span className="app-sidebar__logo-name">Signova</span>
-            {!collapsed && <span className="app-sidebar__logo-sub">{brandLabel}</span>}
+            <span className="app-sidebar__logo-sub">{brandLabel}</span>
           </span>
         </div>
         <button
@@ -111,19 +68,13 @@ export function Sidebar({
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!collapsed}
         >
-          {collapsed ? (
-            <svg className="app-sidebar__toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          ) : (
-            <svg className="app-sidebar__toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          )}
+          <svg className="app-sidebar__toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d={collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} />
+          </svg>
         </button>
       </div>
 
-      {!collapsed && organisation ? (
+      {organisation ? (
         <div className="app-sidebar__org">
           <div className="app-sidebar__org-label">Organization</div>
           <div className="app-sidebar__org-card">
@@ -140,16 +91,14 @@ export function Sidebar({
           <div key={section.label} className="app-sidebar__nav-section">
             <div className="app-sidebar__nav-section-label">{section.label}</div>
             {section.items.map((item) => {
-              const active = !collapsed && location.pathname === item.id;
+              const active = pathname === item.id || pathname.startsWith(item.id + "/");
               return (
-                <button
+                <Link
                   key={item.id}
-                  type="button"
-                  className={`app-sidebar__nav-item${
-                    active ? " app-sidebar__nav-item--active" : ""
-                  }`}
-                  onClick={() => navigate(item.id)}
+                  to={item.id}
+                  className={`app-sidebar__nav-item${active ? " app-sidebar__nav-item--active" : ""}`}
                   aria-current={active ? "page" : undefined}
+                  aria-label={collapsed ? item.label : undefined}
                   title={collapsed ? item.label : undefined}
                 >
                   <span className="app-sidebar__nav-item__icon">{item.icon}</span>
@@ -157,7 +106,7 @@ export function Sidebar({
                   {item.badge ? (
                     <span className="app-sidebar__nav-item__badge">{item.badge}</span>
                   ) : null}
-                </button>
+                </Link>
               );
             })}
           </div>
@@ -165,26 +114,30 @@ export function Sidebar({
       </nav>
 
       <div className="app-sidebar__footer">
-        {!collapsed && user ? (
+        {footer ?? null}
+        {user ? (
           <div className="app-sidebar__user">
             <span className="app-sidebar__user-avatar">{user.initials}</span>
             <div className="app-sidebar__user-meta">
               <span className="app-sidebar__user-name">{user.name}</span>
               <span className="app-sidebar__user-role">{user.role}</span>
             </div>
+            {onSignOut ? (
+              <button
+                type="button"
+                className="app-sidebar__signout"
+                onClick={onSignOut}
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <svg className="app-sidebar__toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9" />
+                </svg>
+              </button>
+            ) : null}
           </div>
         ) : null}
-        {footer?.children ?? null}
       </div>
-
-      {/* Off-canvas backdrop */}
-      {isDrawerOpen ? (
-        <div
-          className="app-sidebar__backdrop"
-          onClick={onCloseDrawer}
-          aria-hidden="true"
-        />
-      ) : null}
     </aside>
   );
 }

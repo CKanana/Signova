@@ -25,6 +25,7 @@
     "seed": "npm run seed --workspace @signova/server"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.5",
+    "playwright": "^1.64.1"
   }
 }

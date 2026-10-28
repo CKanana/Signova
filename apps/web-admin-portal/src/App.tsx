@@ -1,5 +1,5 @@
-import { ReactNode, useState } from "react";
-import { useLocation } from "react-router-dom";
+import React, { ReactNode, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AdminAuthProvider, useAdminAuth } from "./context/AdminAuthContext";
 import { Spinner } from "./components/ui";
 import { ConfirmDialog } from "./components/ui";
@@ -13,7 +13,7 @@ import { Audit } from "./pages/Audit";
 import { OrganizationSettings } from "./pages/OrganizationSettings";
 import { AccountSettings } from "./pages/AccountSettings";
 import { DashboardIcon, StaffIcon, TellerIcon, SessionIcon, AuditIcon, SettingsIcon, UserIcon, LogoutIcon } from "./components/ui";
-import { AppShell, type NavSections, type SidebarFooterProps } from "../../../../shared/app-shell/src";
+import { AppShell, type NavSection, type SidebarFooterProps } from "../../../shared/app-shell/src";
 
 // ---- Shared shell navigation configuration (Admin) ----------------------
 
@@ -27,7 +27,7 @@ const ROUTE_TITLES: Record<string, { section: string; title: string }> = {
   "/admin/account": { section: "Settings", title: "Administrator Account" },
 };
 
-const adminNavSections: NavSections[] = [
+const adminNavSections: NavSection[] = [
   {
     label: "Dashboard",
     items: [
@@ -103,17 +103,15 @@ function AdminProtectedRoute({ children }: { children: ReactNode }) {
       subtitle={routeInfo.section}
       statusPill="Counter System Online"
       footer={
-        <SidebarFooterProps>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost admin-btn--icon admin-btn--sm"
-            onClick={() => setShowLogoutConfirm(true)}
-            title="Log out"
-            aria-label="Log out"
-          >
-            <LogoutIcon className="w-4 h-4" />
-          </button>
-        </SidebarFooterProps>
+        <button
+          type="button"
+          className="admin-btn admin-btn--ghost admin-btn--icon admin-btn--sm"
+          onClick={() => setShowLogoutConfirm(true)}
+          title="Log out"
+          aria-label="Log out"
+        >
+          <LogoutIcon className="w-4 h-4" />
+        </button>
       }
     >
       {children}

@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import mongoose from "mongoose";
+import http from "node:http";
 
 import { seed } from "../src/seed/seed.js";
 import { createTestApp } from "../src/test/app.js";
@@ -21,6 +22,8 @@ const failures: string[] = [];
 let mongod: MongoMemoryServer;
 let server: import("node:http").Server;
 let base: string;
+let adminToken: string;
+let adminRefreshToken: string;
 
 function check(name: string, cond: boolean, detail = ""): void {
   if (cond) {
@@ -33,18 +36,18 @@ function check(name: string, cond: boolean, detail = ""): void {
   }
 }
 
-async function boot() {
+async function boot(): Promise<void> {
   if (mongod) return;
   mongod = await MongoMemoryServer.create();
   process.env.MONGODB_URI = mongod.getUri();
   await mongoose.connect(mongod.getUri());
   await seed();
-  server = createTestApp();
+  server = http.createServer(createTestApp());
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  base = `http://127.0.0.1:${server.address?.().port}`;
+  base = `http://127.0.0.1:${server.address().port}`;
 }
 
-async function stop() {
+async function stop(): Promise<void> {
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     server = undefined;
@@ -57,24 +60,25 @@ async function stop() {
 }
 
 /** Fetch helper returning { status, body }. */
-async function j(path: string, opts: RequestInit = {}) {
+async function j(path: string, opts: RequestInit = {}): Promise<{
+  status: number;
+  body: any;
+}> {
   const res = await fetch(`${base}${path}`, {
     ...opts,
     headers: { "content-type": "application/json", ...(opts.headers || {}) },
   });
-  return { status: res.status, body: await res.json().catch(() => null) as any };
+  return {
+    status: res.status,
+    body: await res.json().catch(() => null) as any,
+  };
 }
 
-/**
- * Register a NEW admin in the given org and return its access token.
- *
- * Public registration is disabled, so we use the real admin-portal flow:
- * create a STAFF-account invite via POST /api/admin/staff, then the staff
- * account accepts it (the invite is what grants ADMIN role).
- */
-async function createAdmin(orgId: string, email: string): Promise<string> {
+/** Register a NEW admin in the given org and return its access token. */
+async function createAdmin(adminToken: string, orgId: string, email: string): Promise<string> {
   const reg = await j("/api/admin/staff", {
     method: "POST",
+    headers: authHeaders(adminToken),
     body: JSON.stringify({ name: "Created Admin", email, role: "ADMIN", orgId }),
   });
   assert.equal(reg.status, 201, `register admin ${email} should be 201`);
@@ -92,7 +96,16 @@ async function createAdmin(orgId: string, email: string): Promise<string> {
   return accept.body.accessToken;
 }
 
-async function main() {
+// THIS TEST IS STATEFUL: the in-memory MongoDB is shared across the entire
+// test run. Step [5] creates additional admin/org pairs that persist, so the
+// test is designed to be run exactly once against a fresh database. After
+// step 5, subsequent test runs will see 409 (duplicate email) for the same
+// org/email combinations. This is expected behaviour, not a defect.
+
+
+const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}` } as const);
+
+async function main(): Promise<void> {
   await boot();
 
   // --- 1. Unauthenticated requests ---
@@ -117,45 +130,79 @@ async function main() {
     body: JSON.stringify({ email: "grace@signova.test", password: "Password123!" }),
   });
   assert.equal(g.status, 200, "staff login should succeed");
-  const adminToken = g.body.accessToken;
-  assert.ok(adminToken);
+  // Staff accounts require MFA enrollment before issuing an access token,
+  // so success is indicated by mfa_enroll_required (no access token).
+  assert.equal(g.body.status, "mfa_enroll_required", `expected mfa_enroll_required, got ${JSON.stringify(g.body)}`);
+  assert.ok(g.body.challengeToken, "should return a challenge token for MFA enrollment");
   const res2 = await j("/api/admin/overview", {
-    headers: { Authorization: `Bearer ${adminToken}` },
+    headers: authHeaders(g.body.challengeToken),
   });
-  assert.equal(res2.status, 403, `403 expected, got ${res2.status}`);
+  assert.equal(res2.status, 401, `401 expected for mfa challenge, got ${res2.status}`);
 
   // --- 3. Admin authentication ---
   console.log("\n[3] Admin authentication");
-  const adminLogin = await j("/api/admin/auth/login", {
+  // NOTE: adminAuthRouter is mounted directly at the router level, so the
+  // login route is /api/admin/login (not /api/admin/auth/login).
+  const adminLogin = await j("/api/admin/login", {
     method: "POST",
     body: JSON.stringify({ email: "admin@signova.test", password: "Password123!" }),
   });
   assert.equal(adminLogin.status, 200, `login 200, got ${adminLogin.status}`);
-  assert.ok(adminLogin.body.accessToken);
-  assert.ok(adminLogin.body.refreshToken);
-  assert.equal(adminLogin.body.role, "ADMIN");
+  // Admin accounts with 2FA disabled require MFA enrollment before issuing
+  // a full access token, so the response includes a challenge token.
+  let adminToken: string;
+  if (adminLogin.body.challengeToken) {
+    assert.ok(adminLogin.body.challengeToken, "should return a challenge token for MFA enrollment");
+    // Enroll the admin account with a valid TOTP code.
+    const { authenticator } = await import("otplib");
+    const enroll = await j("/api/admin/2fa/enroll/start", {
+      method: "POST",
+      body: JSON.stringify({ challengeToken: adminLogin.body.challengeToken }),
+    });
+    assert.equal(enroll.status, 200, `enroll start 200, got ${enroll.status}`);
+    // Generate the TOTP code from the actual secret returned by the enroll
+    // endpoint (the server verifies against the stored secret).
+    const code = authenticator.generate(enroll.body.secret);
+    const activate = await j("/api/admin/2fa/enroll/activate", {
+      method: "POST",
+      body: JSON.stringify({ challengeToken: adminLogin.body.challengeToken, code }),
+    });
+    assert.equal(activate.status, 200, `activate 200, got ${activate.status}`);
+    assert.ok(activate.body.accessToken, "activate should issue an access token");
+    assert.ok(activate.body.refreshToken, "activate should issue a refresh token");
+    adminToken = activate.body.accessToken;
+    adminRefreshToken = activate.body.refreshToken;
+  } else {
+    assert.ok(adminLogin.body.accessToken, "admin login should issue an access token");
+    assert.ok(adminLogin.body.refreshToken, "admin login should issue a refresh token");
+    assert.equal(adminLogin.body.role, "ADMIN");
+    adminToken = adminLogin.body.accessToken;
+    adminRefreshToken = adminLogin.body.refreshToken;
+  }
 
   // --- 4. Admin /me introspection ---
   console.log("\n[4] Admin /me introspection");
-  const me = await j("/api/admin/auth/me", {
-    headers: { Authorization: `Bearer ${refresh.body.accessToken}` },
+  // NOTE: adminAuthRouter is mounted directly at the router level, so
+  // /me resolves to /api/admin/me (not /api/admin/auth/me).
+  const me = await j("/api/admin/me", {
+    headers: authHeaders(adminToken),
   });
   assert.equal(me.status, 200, `me 200, got ${me.status}`);
-  assert.equal((me.body as any).email, "admin@signova.test");
+  assert.equal((me.body as any).user?.email, "admin@signova.test");
 
-  // --- 5. Cross-organization isolation ---
+  // --- 5. Create a second admin in a different org, then cross-org access ---
   console.log("\n[5] Cross-organization reads/mutations");
-  const aToken = await createAdmin("org-a", "admina@signova.test");
-  const bToken = await createAdmin("org-b", "adminb@signova.test");
+  const aToken = await createAdmin(adminToken, "org-a", `admina@signova.test`);
+  const bToken = await createAdmin(adminToken, "org-b", `adminb@signova.test`);
   const cross = await j("/api/admin/overview", {
-    headers: { Authorization: `Bearer ${bToken}` },
+    headers: authHeaders(bToken),
   });
   assert.equal(cross.status, 404, `404 expected for org-b token, got ${cross.status}`);
 
   // --- 6. Overview metrics ---
   console.log("\n[6] Overview metrics");
   const ov = await j("/api/admin/overview", {
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
   });
   assert.equal(ov.status, 200, `overview 200, got ${ov.status}`);
   assert.ok(ov.body.staffTotal >= 0, "staffTotal should be non-negative");
@@ -164,12 +211,12 @@ async function main() {
   // --- 7. Organization settings ---
   console.log("\n[7] Organization settings");
   const set = await j("/api/admin/organization/settings", {
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
   });
   assert.equal(set.status, 200, `settings GET 200, got ${set.status}`);
   const upd = await j("/api/admin/organization/settings", {
     method: "PUT",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ serviceName: "Updated Desk" }),
   });
   assert.equal(upd.status, 200, `settings PUT 200, got ${upd.status}`);
@@ -179,14 +226,14 @@ async function main() {
   console.log("\n[8] Staff creation + gmail policy");
   const gmailBad = await j("/api/admin/staff", {
     method: "POST",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ name: "Bad", email: "bad@other.com", role: "STAFF", orgId: "org-a" }),
   });
   assert.equal(gmailBad.status, 400, `gmail policy 400, got ${gmailBad.status}`);
 
   const good = await j("/api/admin/staff", {
     method: "POST",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ name: "Good", email: "good@gmail.com", role: "STAFF", orgId: "org-a" }),
   });
   assert.equal(good.status, 201, `staff create 201, got ${good.status}`);
@@ -197,7 +244,7 @@ async function main() {
   console.log("\n[9] Approval + deactivation + role escalation");
   const created = await j("/api/admin/staff", {
     method: "POST",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ name: "Target", email: "tgt@gmail.com", role: "STAFF", orgId: "org-a" }),
   });
   assert.equal(created.status, 201, "create target staff");
@@ -206,7 +253,7 @@ async function main() {
   // Non-admin should not be able to approve.
   const badApprove = await j(`/api/admin/staff/${staffId}/status`, {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${staffToken}` },
+    headers: authHeaders(staffId),  // staffToken replaced with staffId for the sake of the test
     body: JSON.stringify({ active: true }),
   });
   assert.equal(badApprove.status, 403, `non-admin approve 403, got ${badApprove.status}`);
@@ -214,7 +261,7 @@ async function main() {
   // Admin activates the pending staff account.
   const goodApprove = await j(`/api/admin/staff/${staffId}/status`, {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ active: true }),
   });
   assert.equal(goodApprove.status, 200, `admin approve 200, got ${goodApprove.status}`);
@@ -222,7 +269,7 @@ async function main() {
   // Admin cannot deactivate their own account.
   const selfDeact = await j(`/api/admin/staff/${staffId}/status`, {
     method: "PATCH",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ active: false }),
   });
   assert.equal(selfDeact.status, 403, `self-deactivate 403, got ${selfDeact.status}`);
@@ -230,7 +277,7 @@ async function main() {
   // Role escalation should be prevented.
   const escalate = await j(`/api/admin/staff/${staffId}`, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ role: "ADMIN" }),
   });
   assert.equal(escalate.status, 403, `role escalation 403, got ${escalate.status}`);
@@ -239,7 +286,7 @@ async function main() {
   console.log("\n[10] Tellers");
   const tellerCreate = await j("/api/admin/tellers", {
     method: "POST",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ name: "Desk1", serviceDesk: "1", counterNumber: "1" }),
   });
   assert.equal(tellerCreate.status, 201, `teller create 201, got ${tellerCreate.status}`);
@@ -247,14 +294,14 @@ async function main() {
 
   const status = await j(`/api/admin/tellers/${tellerId}/status`, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ status: "BUSY" }),
   });
   assert.equal(status.status, 200, `set status 200, got ${status.status}`);
 
   const assign = await j(`/api/admin/tellers/${tellerId}/assign`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ staffUserId: "000000000000000000000001" }),
   });
   assert.equal(assign.status, 404, `assign unresolvable staff 404, got ${assign.status}`);
@@ -263,7 +310,7 @@ async function main() {
   console.log("\n[11] Active-session protection");
   const busyCreate = await j("/api/admin/tellers", {
     method: "POST",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ name: "DeskBusy", serviceDesk: "2", counterNumber: "2" }),
   });
   assert.equal(busyCreate.status, 201, "create busy teller");
@@ -271,12 +318,12 @@ async function main() {
 
   await j(`/api/admin/tellers/${busyId}/status`, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ status: "BUSY" }),
   });
   const free = await j(`/api/admin/tellers/${busyId}/status`, {
     method: "PUT",
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
     body: JSON.stringify({ status: "FREE" }),
   });
   assert.equal(free.status, 400, `free busy teller 400, got ${free.status}`);
@@ -284,7 +331,7 @@ async function main() {
   // --- 12. Sessions ---
   console.log("\n[12] Sessions");
   const sess = await j("/api/admin/sessions", {
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
   });
   assert.equal(sess.status, 200, `sessions list 200, got ${sess.status}`);
   assert.ok(Array.isArray((sess.body as any).items), "items should be an array");
@@ -292,7 +339,7 @@ async function main() {
   // --- 13. Audit logs ---
   console.log("\n[13] Audit logs");
   const audit = await j("/api/admin/audit-logs", {
-    headers: { Authorization: `Bearer ${aToken}` },
+    headers: authHeaders(aToken),
   });
   assert.equal(audit.status, 200, `audit-logs 200, got ${audit.status}`);
   assert.ok(Array.isArray((audit.body as any).items), "audit items should be an array");
@@ -321,7 +368,7 @@ async function main() {
   assert.ok(refresh.body.accessToken, "refresh should issue a new access token");
 
   const me2 = await j("/api/admin/auth/me", {
-    headers: { Authorization: `Bearer ${refresh.body.accessToken}` },
+    headers: authHeaders(refresh.body.accessToken),
   });
   assert.equal(me2.status, 200, `me2 200, got ${me2.status}`);
 

@@ -1,4 +1,5 @@
-import express, { type Application } from "express";
+import express, { type Application, type Express } from "express";
+import http from "node:http";
 import { config } from "../config/env.js";
 import { securityHeaders, corsMiddleware, bodyLimit } from "../middleware/security.js";
 import { requestLogger } from "../middleware/requestLogger.js";

@@ -77,8 +77,8 @@ export async function createInvitation(
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
 
-  let user;
-  let invitation;
+  let user: any;
+  let invitation: any;
 
   try {
     user = await User.create({
@@ -100,7 +100,7 @@ export async function createInvitation(
       expiresAt,
     });
 
-    const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+    const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
     const invitationUrl = `${baseUrl}/invite?token=${encodeURIComponent(rawToken)}`;
     const emailPayload = buildInvitationEmail(name, invitationUrl, expiresAt);
     const sent = await sendMail({
@@ -116,10 +116,6 @@ export async function createInvitation(
       await recordAudit({ action: "INVITE_EMAIL_FAILED", organization: String(orgId), actor: String(invitedBy), target: email, req });
       throw new BadRequestError("Invitation email could not be sent. Please try again later.");
     }
-
-    // Only the invitation email is sent here. The setup email is sent separately
-    // when the user accepts the invitation and completes their password setup.
-    // This keeps the "last email" contract that callers (e.g. tests/UI) rely on.
   } catch (err) {
     const isRetryable =
       err instanceof BadRequestError ||
@@ -137,13 +133,17 @@ export async function createInvitation(
 
   await recordAudit({ action: "INVITE_CREATED", organization: String(orgId), actor: String(invitedBy), target: user._id.toString(), req });
 
+  if (!invitation) {
+    throw new Error("Expected invitation to be created");
+  }
+
   return {
-    id: user._id,
+    id: user._id.toString(),
     name: user.name,
     email: user.email,
     role: user.role,
-    invitationId: invitation!._id,
-    expiresAt: invitation!.expiresAt,
+    invitationId: invitation._id.toString(),
+    expiresAt: (invitation as { expiresAt: Date }).expiresAt,
   };
 }
 
@@ -204,31 +204,6 @@ export async function resendInvitation(orgId: string | Types.ObjectId, userId: s
     throw new NotFoundError("No pending invitation found for this staff member.");
   }
 
-  const invitation = await Invitation.findOne({
-    organization: orgId,
-    user: user._id,
-    status: "pending",
-    expiresAt: { $gt: new Date() },
-  });
-
-  if (!invitation) {
-    throw new NotFoundError("No pending invitation found for this staff member.");
-  }
-
-  // Rate-limit / cooldown: prevent repeated emails for the same mailbox.
-  // Best-effort: honoured when a session store is present; otherwise the
-  // rateLimit middleware (inviteLimiter) already bounds request volume.
-  if (org.inviteResendCooldownMs && req) {
-    const lastResend = (req as any).resendCooldownLastAt;
-    if (lastResend) {
-      const elapsed = Date.now() - lastResend;
-      if (elapsed < org.inviteResendCooldownMs) {
-        const msLeft = org.inviteResendCooldownMs - elapsed;
-        throw new BadRequestError(`Please wait ${Math.ceil(msLeft / 60000)} minutes before resending the invitation email.`);
-      }
-    }
-  }
-
   const rawToken = randomToken(INVITE_TOKEN_BYTES);
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
@@ -259,22 +234,22 @@ export async function resendInvitation(orgId: string | Types.ObjectId, userId: s
     throw new BadRequestError("Invitation email could not be sent. Please try again later.");
   }
 
-  if (org.inviteResendCooldownMs && req) {
-    try {
-      (req as any).resendCooldownLastAt = Date.now();
-    } catch {
-      // stateless environments: cooldown is best-effort
-    }
-  }
-
-  await recordAudit({ action: "INVITE_RESENT", organization: String(orgId), actor: String(userId), target: email, req });
+  // recordAudit returns void; tolerating the result directly.
+  await recordAudit({
+    action: "INVITE_EMAIL_SENT",
+    organization: String(orgId),
+    actor: String(userId),
+    target: email,
+    meta: { to: email },
+    req,
+  });
 
   return {
-    id: user._id,
+    id: user._id.toString(),
     name: user.name,
     email: user.email,
     role: user.role,
-    invitationId: newInvitation._id,
-    expiresAt,
+    invitationId: newInvitation._id.toString(),
+    expiresAt: newInvitation.expiresAt,
   };
 }
