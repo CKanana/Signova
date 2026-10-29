@@ -311,6 +311,34 @@ async function main(): Promise<void> {
   });
   assert.equal(escalate.status, 403, `role escalation 403, got ${escalate.status}`);
 
+  // --- 9b. Resend ignores body email ---
+  console.log("\n[9b] Resend ignores body email");
+  const cid = await j("/api/admin/staff", {
+    method: "POST",
+    headers: authHeaders(aToken),
+    body: JSON.stringify({ name: "BodyCheck", email: "bodycheck@gmail.com", role: "STAFF", orgId: "org-a" }),
+  });
+  assert.equal(cid.status, 201, "create staff for resend test");
+  const cUid = (cid.body as any).staff!._id;
+  const cInvite = cid.body?.invitation;
+  assert.ok(cInvite, "create should return invitation");
+  assert.ok(cInvite.invitationId, "invitation must carry the invite id");
+
+  // Resend with a forged body email that differs from the email stored on
+  // the account. The delivered invite must go to the stored email.
+  const resendResp = await j("/api/admin/staff/invite/resend", {
+    method: "POST",
+    headers: authHeaders(aToken),
+    body: JSON.stringify({ uid: cUid, email: "forged@evil.com" }),
+  });
+  assert.equal(resendResp.status, 200, `resend 200, got ${resendResp.status}`);
+  const resendEmail = (resendResp.body as any).invitation?.email;
+  check(
+    "resend uses the email stored on the account, not the request body",
+    resendEmail === "bodycheck@gmail.com",
+    `got ${resendEmail} (expected bodycheck@gmail.com)`,
+  );
+
   // --- 10. Tellers ---
   console.log("\n[10] Tellers");
   const tellerCreate = await j("/api/admin/tellers", {

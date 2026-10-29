@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/server/src/index.js",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed/run.ts",
     "staff:list-pending": "tsx src/scripts/manageStaff.ts list-pending",

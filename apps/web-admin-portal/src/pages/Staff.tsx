@@ -153,21 +153,23 @@ export function Staff() {
     }
   };
 
-  const resendInviteFor = async (uid: string, email: string) => {
-    if (resendLoading[uid]) return;
-    setResendLoading((prev) => ({ ...prev, [uid]: true }));
-    setResendErrors((prev) => ({ ...prev, [uid]: null }));
+  const resendInviteFor = async (s: any) => {
+    if (resendLoading[s.id]) return;
+    setResendLoading((prev) => ({ ...prev, [s.id]: true }));
+    setResendErrors((prev) => ({ ...prev, [s.id]: null }));
     try {
-      const { invitation } = await adminApi.resendInvitation(email);
-      setPendingInvites((prev) => ({ ...prev, [uid]: { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt } }));
-      setStaff((prev) => prev.map((s) => (s.id === uid ? { ...s, email } : s)));
-      setFeedback({ type: "success", message: `Resent the setup email to ${email}. Check your inbox (including spam).` });
+      const { invitation } = await adminApi.resendInvitation(s.id);
+      setPendingInvites((prev) => ({ ...prev, [s.id]: { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt } }));
+      setStaff((prev) =>
+        prev.map((x) => (x.id === s.id ? { ...x } : x))
+      );
+      setFeedback({ type: "success", message: `Resent the setup email for ${s.name}. Check your inbox (including spam).` });
     } catch (err: any) {
       // 404/400 => no pending invitation (already accepted or expired).
-      setResendErrors((prev) => ({ ...prev, [uid]: err?.message ?? "Not available for this staff member." }));
+      setResendErrors((prev) => ({ ...prev, [s.id]: err?.message ?? "Not available for this staff member." }));
       setFeedback({ type: "warning", message: err?.message ?? "No pending invitation to resend." });
     } finally {
-      setResendLoading((prev) => ({ ...prev, [uid]: false }));
+      setResendLoading((prev) => ({ ...prev, [s.id]: false }));
     }
   };
 
@@ -385,7 +387,7 @@ export function Staff() {
                             {!isSelf && !s.twoFactorEnabled && (
                               <button
                                 className="admin-btn admin-btn--ghost admin-btn--sm"
-                                onClick={() => resendInviteFor(s.id, s.email!)}
+                                onClick={() => resendInviteFor(s.id)}
                                 disabled={resendLoading[s.id]}
                               >
                                 {resendLoading[s.id] ? "Resending…" : pendingInvites[s.id] ? "Resent" : "Resend Setup Email"}

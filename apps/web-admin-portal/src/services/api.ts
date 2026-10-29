@@ -192,10 +192,10 @@ export const adminApi = {
   resetStaff2FA: (id: string) =>
     request<{ ok: boolean }>(`/api/admin/staff/${id}/2fa/reset`, { method: "POST" }),
 
-  resendInvitation: (email: string) =>
+  resendInvitation: (uid: string) =>
     request<{ invitation: { id: string; name: string; email: string; role: Role; invitationId: string; expiresAt: string } }>(
       `/api/admin/staff/invite/resend`,
-      { method: "POST", body: { email } },
+      { method: "POST", body: { uid } },
     ),
 
   // Teller management

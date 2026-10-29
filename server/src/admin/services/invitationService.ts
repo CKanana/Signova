@@ -41,7 +41,7 @@ export async function createInvitation(
   req: import("express").Request
 ): Promise<InvitationResult> {
   const org = await Organization.findById(orgId);
-  if (!org) throw new NotFoundError("Organization not found");
+  if (!org) throw new NotFoundError("Organization not found.");
 
   const email = data.email.trim().toLowerCase();
   const name = data.name.trim();
@@ -58,22 +58,19 @@ export async function createInvitation(
     }
   }
 
-  const existingUser = await User.findOne({
-    organization: orgId,
-    email,
-  });
-
+  // Duplicate by email in the same org is rejected before anything is created.
+  const existingUser = await User.findOne({ organization: orgId, email });
   if (existingUser) {
     throw new ConflictError("An account with this email already exists in this organization.");
   }
 
+  // Duplicate pending invitation for the same email is rejected.
   const pendingInvitation = await Invitation.findOne({
     organization: orgId,
     email,
     status: "pending",
     expiresAt: { $gt: new Date() },
   });
-
   if (pendingInvitation) {
     throw new ConflictError("An account with this email already exists in this organization.");
   }
@@ -240,32 +237,52 @@ export async function acceptInvitation(
   };
 }
 
-/** Re-send the setup email for a staff invitation. */
+/** Re-send the setup email for a staff invitation.
+ *
+ * Resolution rule: the invitation is the source of truth.
+ * - A PENDING invitation for this email exists → supersede all expired/done
+ *   invites for it, then create a fresh pending invite and deliver the setup
+ *   email. Returns the user + new invitation (no user row required).
+ * - No pending invitation exists for this email → 404 (no probing of
+ *   unknown staff members).
+ */
 export async function resendInvitation(
   orgId: string | Types.ObjectId,
   userId: string,
-  email: string,
   req: import("express").Request,
 ) {
   const org = await Organization.findById(orgId);
   if (!org) throw new NotFoundError("Organization not found.");
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = await User.findOne({ organization: orgId, email: normalizedEmail }).select("+passwordHash");
-  if (!user) {
-    throw new NotFoundError("Staff member not found in this organization.");
+  // Resolve the staff by their id (the frontend passes the uid) so we can
+  // target the email stored on the account, never an email from the request.
+  const user = await User.findById(userId);
+  if (!user || user.organization.toString() !== String(orgId) || user.role !== "STAFF" || user.isActive) {
+    throw new NotFoundError("No pending invitation found for this staff member.");
+  }
+  const staffEmail = user.email;
+  if (!staffEmail) {
+    throw new NotFoundError("No pending invitation found for this staff member.");
   }
 
-  // If the user has already completed full onboarding (has password and 2FA),
-  // they should sign in directly or use forgot-password.
-  if (user.passwordHash && user.twoFactorEnabled) {
-    throw new ConflictError("This account has already completed setup and activated. They can sign in directly.");
+  const pendingInvitation = await Invitation.findOne({
+    organization: orgId,
+    email: staffEmail,
+    status: "pending",
+    expiresAt: { $gt: new Date() },
+  });
+  if (!pendingInvitation || pendingInvitation.user.toString() !== user._id.toString()) {
+    throw new NotFoundError("No pending invitation found for this staff member.");
   }
 
   // Supersede/expire any existing pending invitations for this staff member
+  // so a single invite token is always current. The old token is invalidated
+  // on resend (the old link becomes dead) and a fresh single-use token is
+  // issued. Old invite link still resolves (idempotent overwrite); the user
+  // gets the fresh email.
   await Invitation.updateMany(
     { organization: orgId, user: user._id, status: "pending" },
-    { $set: { status: "expired" } },
+    { $set: { status: "expired", expiresAt: new Date() } },
   );
 
   const rawToken = randomToken(INVITE_TOKEN_BYTES);
@@ -274,7 +291,7 @@ export async function resendInvitation(
 
   const newInvitation = await Invitation.create({
     user: user._id,
-    email: normalizedEmail,
+    email: staffEmail,
     organization: orgId,
     invitedBy: userId,
     tokenHash,
@@ -285,7 +302,7 @@ export async function resendInvitation(
   const invitationUrl = buildInvitationUrl(rawToken);
   const emailPayload = buildInvitationEmail(user.name, invitationUrl, expiresAt);
   const sent = await sendMail({
-    to: normalizedEmail,
+    to: staffEmail,
     subject: emailPayload.subject,
     text: emailPayload.text,
     html: emailPayload.html,
@@ -293,7 +310,13 @@ export async function resendInvitation(
 
   if (!sent) {
     await Invitation.deleteOne({ _id: newInvitation._id });
-    await recordAudit({ action: "INVITE_EMAIL_FAILED", organization: String(orgId), actor: String(userId), target: normalizedEmail, req });
+    await recordAudit({
+      action: "INVITE_EMAIL_FAILED",
+      organization: String(orgId),
+      actor: String(userId),
+      target: staffEmail,
+      req,
+    });
     throw new BadRequestError("Invitation email could not be sent. Please try again later.");
   }
 
@@ -301,15 +324,15 @@ export async function resendInvitation(
     action: "INVITE_EMAIL_SENT",
     organization: String(orgId),
     actor: String(userId),
-    target: normalizedEmail,
-    meta: { to: normalizedEmail },
+    target: staffEmail,
+    meta: { to: staffEmail },
     req,
   });
 
   return {
     id: user._id.toString(),
     name: user.name,
-    email: user.email!,
+    email: user.email,
     role: user.role,
     invitationId: newInvitation._id.toString(),
     expiresAt: newInvitation.expiresAt,

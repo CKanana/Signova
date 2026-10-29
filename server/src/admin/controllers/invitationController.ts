@@ -10,16 +10,15 @@ import { signAccessToken } from "../../utils/jwt.js";
 
 /** Input shape for resending a staff invitation setup email. */
 const resendSchema = z.object({
-  email: z.string().email().toLowerCase(),
+  uid: z.string(),
 });
 
 export async function resendInvitationHandler(req: Request, res: Response): Promise<void> {
   const body = resendSchema.parse(req.body);
   const organization = req.auth!.orgId;
-  const actor = req.auth!.sub;
 
   try {
-    const result = await resendInvitation(organization, actor, body.email, req);
+    const result = await resendInvitation(organization, body.uid, req);
     res.status(200).json({ invitation: result });
   } catch (err: any) {
     const isNotFound = err instanceof NotFoundError;
@@ -29,8 +28,7 @@ export async function resendInvitationHandler(req: Request, res: Response): Prom
     await recordAudit({
       action: isNotFound ? "INVITE_EMAIL_FAILED" : (isBadRequest ? "INVITE_EMAIL_FAILED" : "INVITE_ACCEPT_FAILED"),
       organization: String(organization),
-      actor,
-      target: body.email,
+      actor: req.auth!.sub,
       req,
       error: err?.message,
     });
