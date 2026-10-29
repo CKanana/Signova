@@ -3,7 +3,7 @@ import { User } from "../../models/user.js";
 import { Invitation } from "../../models/invitation.js";
 import { recordAudit } from "../../services/auditService.js";
 import { randomToken, hashToken } from "../../utils/crypto.js";
-import { sendMail, buildInvitationEmail } from "../../services/mailService.js";
+import { sendMail, buildInvitationEmail, buildInvitationUrl } from "../../services/mailService.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../utils/errors.js";
 const INVITE_TOKEN_BYTES = 32;
 const INVITE_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -62,8 +62,7 @@ export async function createInvitation(orgId, invitedBy, data, req) {
             status: "pending",
             expiresAt,
         });
-        const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
-        const invitationUrl = `${baseUrl}/invite?token=${encodeURIComponent(rawToken)}`;
+        const invitationUrl = buildInvitationUrl(rawToken);
         const emailPayload = buildInvitationEmail(name, invitationUrl, expiresAt);
         const sent = await sendMail({
             to: email,
@@ -160,8 +159,7 @@ export async function resendInvitation(orgId, userId, email, req) {
         status: "pending",
         expiresAt,
     });
-    const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
-    const invitationUrl = `${baseUrl}/invite?token=${encodeURIComponent(rawToken)}`;
+    const invitationUrl = buildInvitationUrl(rawToken);
     const emailPayload = buildInvitationEmail(user.name, invitationUrl, expiresAt);
     const sent = await sendMail({
         to: email,

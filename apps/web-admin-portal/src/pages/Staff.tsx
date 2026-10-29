@@ -71,23 +71,6 @@ export function Staff() {
         onlyInactive: statusFilter === "inactive" ? true : undefined,
       });
       setStaff(res.items);
-      // Best-effort: probe pending invitations once per staff member.
-      // The backend is the single source of truth for whether an invitation
-      // is outstanding, so a 404/400 means "no pending invite".
-      const next: Record<string, { invitationId: string; expiresAt: string }> = {};
-      const errors: Record<string, string | null> = {};
-      for (const s of res.items) {
-        try {
-          const { invitation } = await adminApi.resendInvitation(s.email!);
-          next[s.id] = { invitationId: invitation.invitationId, expiresAt: invitation.expiresAt };
-          errors[s.id] = null;
-        } catch (err: any) {
-          // 404/400 => no pending invitation. Not an error for our purposes.
-          errors[s.id] = err?.message ?? null;
-        }
-      }
-      setPendingInvites(next);
-      setResendErrors(errors);
     } catch (err: any) {
       setError(err?.message ?? "Failed to load staff list.");
     } finally {
@@ -399,13 +382,13 @@ export function Staff() {
                               </button>
                             )}
 
-                            {!isSelf && s.isActive && (
+                            {!isSelf && !s.twoFactorEnabled && (
                               <button
                                 className="admin-btn admin-btn--ghost admin-btn--sm"
                                 onClick={() => resendInviteFor(s.id, s.email!)}
                                 disabled={resendLoading[s.id]}
                               >
-                                {resendLoading[s.id] ? "Resending…" : hasPending ? "Resent" : hasExpired ? "Re-invite" : "Resend Setup Email"}
+                                {resendLoading[s.id] ? "Resending…" : pendingInvites[s.id] ? "Resent" : "Resend Setup Email"}
                               </button>
                             )}
                           </>

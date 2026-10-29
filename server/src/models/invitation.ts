@@ -22,7 +22,7 @@ const invitationSchema = new Schema<IInvitation>(
     email: { type: String, required: true, lowercase: true, trim: true },
     organization: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
     invitedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    tokenHash: { type: String, required: true, unique: true },
+    tokenHash: { type: String, required: true },
     status: { type: String, enum: ["pending", "accepted", "revoked", "expired"], default: "pending", index: true },
     expiresAt: { type: Date, required: true, index: true },
     acceptedAt: { type: Date },

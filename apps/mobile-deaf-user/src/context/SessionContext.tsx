@@ -153,6 +153,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const { organization } = await api.getOrganisation();
       setOrganisation(orgFromBackend(organization));
+      if (typeof document !== "undefined" && organization?.colors) {
+        if (organization.colors.primary) {
+          document.documentElement.style.setProperty("--signova-primary", organization.colors.primary);
+        }
+        if (organization.colors.background) {
+          document.documentElement.style.setProperty("--signova-background", organization.colors.background);
+        }
+      }
     } catch (err) {
       setError(describeError(err));
     } finally {

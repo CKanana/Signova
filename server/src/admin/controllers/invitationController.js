@@ -39,7 +39,7 @@ export async function resendInvitationHandler(req, res) {
         const isNotFound = err instanceof NotFoundError;
         const isBadRequest = err instanceof BadRequestError;
         await recordAudit({
-            action: isNotFound ? "INVITE_ACCEPTED" : "INVITE_EMAIL_FAILED",
+            action: isNotFound ? "INVITE_EMAIL_FAILED" : (isBadRequest ? "INVITE_EMAIL_FAILED" : "INVITE_ACCEPT_FAILED"),
             organization: String(organization),
             actor,
             target: body.email,
@@ -70,7 +70,10 @@ export async function acceptInvitationHandler(req, res) {
     }
     catch (err) {
         await recordAudit({ action: "INVITE_ACCEPT_FAILED", organization: String(req.auth?.orgId ?? ""), target: token, req, error: err?.message });
-        res.status(500).json({ error: "Failed to accept invitation." });
+        // Map service-layer errors to their HTTP equivalents.
+        const isBadRequest = err instanceof BadRequestError;
+        const status = isBadRequest ? 400 : 500;
+        res.status(status).json({ error: err?.message ?? "Failed to accept invitation." });
     }
 }
 /**

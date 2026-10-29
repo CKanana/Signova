@@ -1,18 +1,10 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config/env.js";
 
-/**
- * Email delivery for Signova (new-staff welcome + password reset + invitations).
- *
- * Uses Gmail SMTP via Nodemailer. Credentials come exclusively from
- * environment variables (SMTP_USER + SMTP_APP_PASSWORD — a Gmail App
- * Password, never the account password). Nothing here is hardcoded, logged,
- * or exposed to the frontend.
- *
- * The transport is created lazily and can be replaced wholesale in tests via
- * `setMailTransport` so automated tests never touch real SMTP.
+/** Email delivery for Signova (new-staff welcome + password reset + invitations).
+ * Uses Gmail SMTP via Nodemailer. Credentials from env (SMTP_USER + SMTP_APP_PASSWORD).
+ * Nothing here is hardcoded, logged, or exposed to the frontend.
  */
-
 interface MailMessage {
   to: string;
   subject: string;
@@ -45,18 +37,9 @@ function getTransport(): Transporter {
   return transporter;
 }
 
-/**
- * Send a message. Returns true on success.
- *
- * On failure the error is logged WITHOUT the recipient's address or message
- * body (to avoid leaking PII/tokens into logs) and false is returned so the
- * caller can respond safely. Never throws — a mail outage must not crash
- * the request path.
- */
+/** Send a message. Returns true on success. Never throws. */
 export async function sendMail(message: MailMessage): Promise<boolean> {
-  // A test-injected transport bypasses the SMTP-config gate entirely.
   if (!overrideTransport && !isMailConfigured()) {
-    // eslint-disable-next-line no-console
     console.error("[mail] SMTP is not configured; skipping email delivery");
     return false;
   }
@@ -70,14 +53,14 @@ export async function sendMail(message: MailMessage): Promise<boolean> {
     });
     return Boolean(result);
   } catch (err) {
-    // Redacted: no recipient, no token, no credentials.
-    // eslint-disable-next-line no-console
     console.error("[mail] delivery failed:", (err as Error).message);
     return false;
   }
 }
 
-/** Build the password-reset email body (plain + HTML). */
+/** Build the password-reset email body (plain + HTML).
+ * Exported as `buildResetEmail` for `authService.ts`.
+ */
 export function buildResetEmail(resetUrl: string): { subject: string; text: string; html: string } {
   const subject = "Reset your Signova password";
   const text = [
@@ -109,6 +92,26 @@ export function buildResetEmail(resetUrl: string): { subject: string; text: stri
   </p>
 </div>`.trim();
   return { subject, text, html };
+}
+
+/** Shared helper: build an absolute invitation/setup URL from the configured
+ * admin portal base URL. Never logs or exposes raw tokens.
+ */
+export function buildInvitationUrl(token: string): string {
+  const base = config.appPublicBaseUrl;
+  if (!base) {
+    throw new Error("APP_PUBLIC_BASE_URL is not configured");
+  }
+  try {
+    const [protocol, host] = base.split("://");
+    if (!protocol || !host) {
+      throw new Error("APP_PUBLIC_BASE_URL must be an absolute URL with a hostname");
+    }
+    const url = new URL(`/invite?token=${encodeURIComponent(token)}`, base);
+    return url.toString();
+  } catch (err) {
+    throw new Error(`Invalid APP_PUBLIC_BASE_URL "${config.appPublicBaseUrl}": ${(err as Error).message}`);
+  }
 }
 
 /** Sign-in URL shown in the welcome email (trusted, from env). */
@@ -143,7 +146,7 @@ const SETUP_HTML = `
               <p style="margin:0 0 24px;font-size:15px;line-height:22px;color:#241f27">
                 <a href="{{setupUrl}}" style="display:inline-block;background:#5B2A86;color:#ffffff;padding:14px 22px;border-radius:14px;text-decoration:none;font-weight:bold">Open account setup</a>
               </p>
-              <p style="margin:0 0 18px;font-size:14px;line-height:20px;color:#2E8B8F">This link expires on <strong>{{expiresOn}}</strong>. If the button doesn’t work, copy and paste this URL:</p>
+              <p style="margin:0 0 18px;font-size:14px;line-height:20px;color:#2E8B8F">This link expires on <strong>{{expiresOn}}</strong>. If the button doesn't work, copy and paste this URL:</p>
               <p style="margin:0 0 24px;padding:12px 14px;background:#FFF8DC;border-radius:12px;font-family:monospace;font-size:13px;color:#241f27;word-break:break-all">{{setupUrl}}</p>
               <p style="margin:0 0 10px;font-size:13px;line-height:19px;color:#463f48">If you did not expect this invitation, you can safely ignore this email — no account will be created without your confirmation.</p>
               <p style="margin:0;font-size:13px;line-height:19px;color:#463f48">Signova support will never ask you to share a setup link or password.</p>
@@ -202,13 +205,7 @@ export function buildSetupEmail(
   return { subject, text, html };
 }
 
-/**
- * Build the new-staff welcome email (plain + HTML).
- *
- * Sent when a staff member self-registers. Since new registrations require
- * administrator approval before access is granted, the email confirms that the
- * registration was received and is pending review.
- */
+/** Build the new-staff welcome email (plain + HTML). */
 export function buildWelcomeEmail(
   name: string,
   isPendingApproval = true,
@@ -240,7 +237,7 @@ export function buildWelcomeEmail(
     Once an administrator approves your account, you will be able to sign in to your workspace.
   </p>
   <p style="font-size:13px;color:#68636b">
-    On your first sign-in you&apos;ll set up two-factor authentication with an
+    On your first sign-in you'll set up two-factor authentication with an
     authenticator app — this keeps your account secure.
   </p>
   <p style="font-size:13px;color:#68636b">
@@ -276,7 +273,7 @@ export function buildWelcomeEmail(
     </a>
   </p>
   <p style="font-size:13px;color:#68636b">
-    On your first sign-in you&apos;ll set up two-factor authentication with an
+    On your first sign-in you'll set up two-factor authentication with an
     authenticator app — this keeps your account secure.
   </p>
   <p style="font-size:13px;color:#68636b">
@@ -286,9 +283,7 @@ export function buildWelcomeEmail(
   return { subject, text, html };
 }
 
-/**
- * Build the staff invitation email (plain + HTML).
- */
+/** Build the staff invitation email (plain + HTML). */
 export function buildInvitationEmail(
   name: string,
   invitationUrl: string,

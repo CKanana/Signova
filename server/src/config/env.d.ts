@@ -1,5 +1,4 @@
 import "dotenv/config";
-export declare const BOOTSTRAP_SETUP_TOKEN_TTL_MS: number;
 export declare const config: {
     readonly env: "development" | "test" | "production";
     readonly isProduction: boolean;
@@ -26,5 +25,8 @@ export declare const config: {
     };
     readonly adminPortalUrl: string;
     readonly passwordResetBaseUrl: string;
+    readonly appPublicBaseUrl: string;
     readonly passwordResetTtlMinutes: number;
+    readonly BOOTSTRAP_SETUP_TOKEN_TTL_MS: number;
 };
+export declare const BOOTSTRAP_SETUP_TOKEN_TTL_MS: number;

@@ -12,8 +12,10 @@ import { Sessions } from "./pages/Sessions";
 import { Audit } from "./pages/Audit";
 import { OrganizationSettings } from "./pages/OrganizationSettings";
 import { AccountSettings } from "./pages/AccountSettings";
+import { NotFound } from "./pages/NotFound";
 import { DashboardIcon, StaffIcon, TellerIcon, SessionIcon, AuditIcon, SettingsIcon, UserIcon, LogoutIcon } from "./components/ui";
-import { AppShell, type NavSection, type SidebarFooterProps } from "../../../shared/app-shell/src";
+import { AppShell, type NavSection } from "../../../shared/app-shell/src";
+import signovaMarkLight from "./assets/brand/signova-mark-light.png";
 
 // ---- Shared shell navigation configuration (Admin) ----------------------
 
@@ -72,7 +74,7 @@ function initials(name: string): string {
  * Protected route shell — renders the shared AppShell if authenticated.
  */
 function AdminProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, organization, isAuthenticated, isLoading } = useAdminAuth();
+  const { user, organization, isAuthenticated, isLoading, signOut } = useAdminAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const location = useLocation();
 
@@ -94,28 +96,45 @@ function AdminProtectedRoute({ children }: { children: ReactNode }) {
   const routeInfo = ROUTE_TITLES[location.pathname] ?? { section: "Admin", title: "Overview" };
 
   return (
-    <AppShell
-      brandLabel="ADMIN PORTAL"
-      organization={{ name: organization?.name ?? "", serviceName: organization?.serviceName }}
-      user={{ name: user.name, role: user.role, initials: initials(user.name) }}
-      navSections={adminNavSections}
-      title={routeInfo.title}
-      subtitle={routeInfo.section}
-      statusPill="Counter System Online"
-      footer={
-        <button
-          type="button"
-          className="admin-btn admin-btn--ghost admin-btn--icon admin-btn--sm"
-          onClick={() => setShowLogoutConfirm(true)}
-          title="Log out"
-          aria-label="Log out"
-        >
-          <LogoutIcon className="w-4 h-4" />
-        </button>
-      }
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        brandLabel="ADMIN PORTAL"
+        logoSrc={organization?.logoUrl || signovaMarkLight}
+        organization={{ name: organization?.name ?? "", serviceName: organization?.serviceName }}
+        user={{ name: user.name, role: user.role, initials: initials(user.name) }}
+        onSignOut={() => setShowLogoutConfirm(true)}
+        navSections={adminNavSections}
+        title={routeInfo.title}
+        subtitle={routeInfo.section}
+        statusPill="Counter System Online"
+        footer={
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost admin-btn--icon admin-btn--sm"
+            onClick={() => setShowLogoutConfirm(true)}
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogoutIcon className="w-4 h-4" />
+          </button>
+        }
+      >
+        {children}
+      </AppShell>
+
+      <ConfirmDialog
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        title="Sign Out of Admin Portal"
+        message="Are you sure you want to end your administrative session? You will need your credentials and authenticator to sign in again."
+        confirmText="Sign Out"
+        confirmVariant="danger"
+        onConfirm={async () => {
+          setShowLogoutConfirm(false);
+          await signOut();
+        }}
+      />
+    </>
   );
 }
 
@@ -191,7 +210,7 @@ export default function App() {
               </AdminProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/admin/overview" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </AdminAuthProvider>
     </BrowserRouter>

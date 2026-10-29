@@ -163,6 +163,24 @@ export const api = {
       auth: false,
     }),
 
+  staffSetupAccept: (token: string, password: string) =>
+    request<{
+      status: "mfa_enroll_required";
+      challengeToken: string;
+      user: { id: string; name: string; email?: string };
+    }>("/api/admin/staff/setup/accept", {
+      method: "POST",
+      body: { token, password },
+      auth: false,
+    }),
+
+  staffSetupEnrollStart: (challengeToken: string) =>
+    request<{ secret: string; otpauthUrl: string; qrDataUrl: string }>("/api/auth/2fa/enroll/start", {
+      method: "POST",
+      body: { challengeToken },
+      auth: false,
+    }),
+
   staffSetupEnrollActivate: (challengeToken: string, code: string) =>
     request<{ status: "authenticated"; accessToken: string; refreshToken: string; user: any }>("/api/admin/staff/setup/activate", {
       method: "POST",

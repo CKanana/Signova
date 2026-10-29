@@ -5,7 +5,7 @@ import * as adminService from "../services/adminService.js";
 import { recordAudit } from "../../services/auditService.js";
 import { paramId } from "../../utils/params.js";
 import { Organization } from "../../models/organization.js";
-import { NotFoundError } from "../../utils/errors.js";
+import { NotFoundError, ForbiddenError } from "../../utils/errors.js";
 import type { Role, TellerStatus, SessionStatus } from "../../../../shared/types/translation.js";
 
 /**
@@ -34,14 +34,14 @@ export const settingsUpdateSchema = z.object({
       background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     })
     .optional(),
-  logoUrl: z.string().url().optional(),
+  logoUrl: z.string().optional().nullable(),
   restrictRegistrationByDomain: z.boolean().optional(),
-  allowedEmailDomains: z.array(z.string().email()).optional(),
+  allowedEmailDomains: z.array(z.string().min(1)).optional(),
 });
 
 export async function getOrgSettingsHandler(req: Request, res: Response): Promise<void> {
   const org = await adminService.getOrganization(req.auth!.orgId);
-  res.json({ profile: org });
+  res.json({ profile: org, organization: org });
 }
 
 export async function updateOrgSettingsHandler(req: Request, res: Response): Promise<void> {
@@ -52,20 +52,20 @@ export async function updateOrgSettingsHandler(req: Request, res: Response): Pro
   });
   if (!org) throw new NotFoundError("Organization not found");
   await recordAudit({ action: "ORG_UPDATE", actor: req.auth!.sub, organization: req.auth!.orgId, req });
-  res.json({ profile: org });
+  res.json({ profile: org, organization: org });
 }
 
 // --- Overview metrics ---
 
 export async function getOverviewHandler(req: Request, res: Response): Promise<void> {
   const orgId = req.auth!.orgId;
+  const org = await adminService.getOrganization(orgId);
+
   const [staff, tellersRes, sessions] = await Promise.all([
     adminService.listStaff(orgId, { onlyActive: false }),
     adminService.listTellers(orgId),
     adminService.listSessions(orgId, { status: undefined }),
   ]);
-
-  const org = await adminService.getOrganization(orgId);
   const staffItems = staff.items as any[];
   const tellerItems = tellersRes.items as any[];
   const sessionItems = sessions.items as any[];
@@ -79,6 +79,8 @@ export async function getOverviewHandler(req: Request, res: Response): Promise<v
   const metrics = {
     organization: org,
     staffCount: staffItems.length,
+    staffTotal: staffItems.length,
+    staffActive: staffActiveCount,
     staffActiveCount,
     staffPendingCount: staffItems.filter((s) => !s.isActive).length,
     tellerCount: tellerItems.length,
@@ -88,7 +90,12 @@ export async function getOverviewHandler(req: Request, res: Response): Promise<v
     activeSessionCount,
     totalSessionCount: sessionItems.length,
   };
-  res.json({ metrics });
+  res.json({
+    metrics,
+    staffTotal: staffItems.length,
+    staffActive: staffActiveCount,
+    organization: org,
+  });
 }
 
 // --- Staff management ---
@@ -124,24 +131,34 @@ export async function createStaffHandler(req: Request, res: Response): Promise<v
       name: z.string().min(1),
       email: z.string().email(),
       phone: z.string().optional(),
-      role: z.enum(["STAFF", "ADMIN"]),
+      role: z.enum(["STAFF", "ADMIN"]).default("STAFF"),
     })
     .parse(req.body);
 
-  const { user, invitation } = await adminService.createStaff(req.auth!.orgId, body, req.auth!.sub, req);
-  res.status(201).json({
-    staff: user,
-    invitation: invitation
-      ? {
-          id: invitation.id,
-          name: invitation.name,
-          email: invitation.email,
-          role: invitation.role,
-          invitationId: invitation.invitationId,
-          expiresAt: invitation.expiresAt,
-        }
-      : null,
-  });
+  try {
+    const { user, invitation } = await adminService.createStaff(req.auth!.orgId, body, req.auth!.sub, req);
+    const userObj = typeof (user as any).toObject === "function" ? (user as any).toObject() : user;
+    res.status(201).json({
+      ...userObj,
+      staff: user,
+      invitation: invitation
+        ? {
+            id: invitation.id,
+            name: invitation.name,
+            email: invitation.email,
+            role: invitation.role,
+            invitationId: invitation.invitationId,
+            expiresAt: invitation.expiresAt,
+          }
+        : null,
+    });
+  } catch (err: any) {
+    if (err instanceof ForbiddenError) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: err.message } });
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function getStaffHandler(req: Request, res: Response): Promise<void> {
@@ -238,8 +255,8 @@ export async function setTellerStatusHandler(req: Request, res: Response): Promi
 }
 
 export async function assignStaffToTellerHandler(req: Request, res: Response): Promise<void> {
-  const body = z.object({ staffUserId: z.string() }).parse(req.body);
-  const teller = await adminService.assignStaffToTeller(req.auth!.orgId, paramId(req), body.staffUserId, req.auth!.sub, req);
+  const body = z.object({ staffUserId: z.string().nullable().optional() }).parse(req.body);
+  const teller = await adminService.assignStaffToTeller(req.auth!.orgId, paramId(req), body.staffUserId ?? "", req.auth!.sub, req);
   res.json({ teller });
 }
 

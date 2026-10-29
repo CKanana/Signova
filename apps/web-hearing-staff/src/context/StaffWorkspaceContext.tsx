@@ -145,6 +145,15 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const { organization: org } = await api.getOrganization();
       setOrganization(org);
+      if (typeof document !== "undefined" && org?.colors) {
+        if (org.colors.primary) {
+          document.documentElement.style.setProperty("--signova-primary", org.colors.primary);
+          document.documentElement.style.setProperty("--signova-royal", org.colors.primary);
+        }
+        if (org.colors.background) {
+          document.documentElement.style.setProperty("--signova-background", org.colors.background);
+        }
+      }
     } catch (err) {
       setError(describeError(err, "Could not load your organization details."));
     } finally {

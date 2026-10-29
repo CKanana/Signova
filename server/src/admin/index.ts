@@ -1,23 +1,27 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/auth.js";
-import { assertSameOrg } from "../middleware/auth.js";
-import { validate } from "../middleware/validate.js";
-import { paramId } from "../utils/params.js";
 import { adminAuthRouter } from "./auth.js";
 import adminRouter from "./routes/adminRouter.js";
-import { acceptInvitationHandler } from "./controllers/invitationController.js";
+import { acceptInvitationHandler, acceptInvitationByIdHandler } from "./controllers/invitationController.js";
+import { acceptStaffSetupHandler, activateStaffSetupHandler } from "./controllers/staffSetupController.js";
 import { acceptBootstrapHandler } from "./controllers/bootstrapController.js";
+import { inviteLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 
 // Administration authentication (reuses the existing JWT + TOTP surface).
-// Note: the sub-routes of adminAuthRouter are mounted at the ADMIN-only path
-// so that login resolves to /api/admin/login (not /api/admin/auth/login).
+// Mounted at both root and /auth so /api/admin/login and /api/admin/auth/login both work.
 router.use(adminAuthRouter);
+router.use("/auth", adminAuthRouter);
 
 // Public invitation acceptance (no bearer token required).
-router.post("/invitations/accept", acceptInvitationHandler);
+router.post("/invitations/accept", inviteLimiter, acceptInvitationHandler);
+router.post("/invitations/:invitationId/accept", inviteLimiter, acceptInvitationByIdHandler);
+
+// Public staff setup acceptance & 2FA activation (no bearer token required).
+router.post("/staff/setup/accept", inviteLimiter, acceptStaffSetupHandler);
+router.post("/staff/setup/activate", inviteLimiter, activateStaffSetupHandler);
 
 // Public bootstrap acceptance for the first administrator (no bearer token required).
 router.post("/bootstrap/accept", acceptBootstrapHandler);

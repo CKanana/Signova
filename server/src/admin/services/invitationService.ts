@@ -1,14 +1,15 @@
 import { Organization } from "../../models/organization.js";
 import { User } from "../../models/user.js";
 import { Invitation } from "../../models/invitation.js";
-import { SetupToken } from "../../models/setupToken.js";
 import { recordAudit } from "../../services/auditService.js";
 import { randomToken, hashToken } from "../../utils/crypto.js";
-import { sendMail, buildInvitationEmail, buildSetupEmail } from "../../services/mailService.js";
+import { sendMail, buildInvitationEmail, buildInvitationUrl } from "../../services/mailService.js";
 import type { Types } from "mongoose";
 import type { Role } from "../../../../shared/types/translation.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../utils/errors.js";
 import { assertPasswordPolicy } from "../../utils/passwordPolicy.js";
+import { hashPassword } from "../../services/tokenService.js";
+import { signChallengeToken } from "../../utils/jwt.js";
 
 const INVITE_TOKEN_BYTES = 32;
 const INVITE_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -17,6 +18,8 @@ const INVITE_EXPIRY_MS = 48 * 60 * 60 * 1000;
 export interface CreateInvitationInput {
   name: string;
   email: string;
+  phone?: string;
+  role?: Role;
 }
 
 /** Shape returned by createInvitation. */
@@ -27,6 +30,8 @@ export interface InvitationResult {
   role: Role;
   invitationId: string;
   expiresAt: Date;
+  user?: any;
+  invitation?: any;
 }
 
 export async function createInvitation(
@@ -41,7 +46,7 @@ export async function createInvitation(
   const email = data.email.trim().toLowerCase();
   const name = data.name.trim();
 
-  if (!email) {
+  if (!email || !name) {
     throw new BadRequestError("Staff name and email are required.");
   }
 
@@ -83,9 +88,10 @@ export async function createInvitation(
   try {
     user = await User.create({
       organization: orgId,
-      role: "STAFF",
+      role: data.role ?? "STAFF",
       name,
       email,
+      phone: data.phone,
       twoFactorEnabled: false,
       isActive: false,
     });
@@ -100,8 +106,7 @@ export async function createInvitation(
       expiresAt,
     });
 
-    const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
-    const invitationUrl = `${baseUrl}/invite?token=${encodeURIComponent(rawToken)}`;
+    const invitationUrl = buildInvitationUrl(rawToken);
     const emailPayload = buildInvitationEmail(name, invitationUrl, expiresAt);
     const sent = await sendMail({
       to: email,
@@ -144,10 +149,26 @@ export async function createInvitation(
     role: user.role,
     invitationId: invitation._id.toString(),
     expiresAt: (invitation as { expiresAt: Date }).expiresAt,
+    user,
+    invitation,
   };
 }
 
-export async function acceptInvitation(rawToken: string, req: import("express").Request) {
+export async function acceptInvitation(
+  rawToken: string,
+  passwordOrReq?: string | import("express").Request,
+  reqMaybe?: import("express").Request,
+) {
+  let password: string | undefined;
+  let req: import("express").Request | undefined;
+
+  if (typeof passwordOrReq === "string") {
+    password = passwordOrReq;
+    req = reqMaybe;
+  } else if (passwordOrReq && typeof passwordOrReq === "object") {
+    req = passwordOrReq as import("express").Request;
+  }
+
   const tokenHash = hashToken(rawToken);
   const invitation = await Invitation.findOne({ tokenHash });
 
@@ -168,10 +189,14 @@ export async function acceptInvitation(rawToken: string, req: import("express").
     throw new BadRequestError("Invitation token is invalid or expired.");
   }
 
-  const user = await User.findById(invitation.user);
+  const user = await User.findById(invitation.user).select("+passwordHash");
   if (!user || !user.email || user.email.toLowerCase() !== invitation.email.toLowerCase()) {
     await recordAudit({ action: "INVITE_ACCEPT_BAD_USER", organization: String(invitation.organization), target: invitation.user.toString(), req });
     throw new BadRequestError("Invitation token is invalid or expired.");
+  }
+
+  if (password && typeof password === "string") {
+    assertPasswordPolicy(password);
   }
 
   const updated = await Invitation.findOneAndUpdate(
@@ -185,24 +210,63 @@ export async function acceptInvitation(rawToken: string, req: import("express").
     throw new BadRequestError("Invitation token is invalid or expired.");
   }
 
+  if (password && typeof password === "string") {
+    user.passwordHash = await hashPassword(password);
+    user.failedLoginCount = 0;
+    user.lockedUntil = undefined;
+    await user.save();
+
+    const challengeToken = signChallengeToken(user._id.toString(), "mfa_enroll");
+
+    await recordAudit({
+      action: "INVITE_ACCEPTED",
+      organization: String(user.organization),
+      actor: user._id,
+      target: user._id.toString(),
+      req,
+    });
+
+    return {
+      status: "mfa_enroll_required",
+      challengeToken,
+      user: { id: user._id.toString(), name: user.name, email: user.email, role: user.role, _id: user._id },
+      invitation: updated,
+    };
+  }
+
   return {
     user,
     invitation: updated,
   };
 }
 
-/** Re-send the setup email for a pending staff invitation. */
-export async function resendInvitation(orgId: string | Types.ObjectId, userId: string, email: string, req: import("express").Request) {
+/** Re-send the setup email for a staff invitation. */
+export async function resendInvitation(
+  orgId: string | Types.ObjectId,
+  userId: string,
+  email: string,
+  req: import("express").Request,
+) {
   const org = await Organization.findById(orgId);
   if (!org) throw new NotFoundError("Organization not found.");
 
-  // Cross-organization / role / active-account guards. The "pending invite"
-  // state is the source of truth: if no pending invitation exists for this
-  // user, we refuse to resend (no "unknown email" probing).
-  const user = await User.findOne({ organization: orgId, email: email.toLowerCase() });
-  if (!user || user.role !== "STAFF" || user.isActive) {
-    throw new NotFoundError("No pending invitation found for this staff member.");
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await User.findOne({ organization: orgId, email: normalizedEmail }).select("+passwordHash");
+  if (!user) {
+    throw new NotFoundError("Staff member not found in this organization.");
   }
+
+  // If the user has already completed full onboarding (has password and 2FA),
+  // they should sign in directly or use forgot-password.
+  if (user.passwordHash && user.twoFactorEnabled) {
+    throw new ConflictError("This account has already completed setup and activated. They can sign in directly.");
+  }
+
+  // Supersede/expire any existing pending invitations for this staff member
+  await Invitation.updateMany(
+    { organization: orgId, user: user._id, status: "pending" },
+    { $set: { status: "expired" } },
+  );
 
   const rawToken = randomToken(INVITE_TOKEN_BYTES);
   const tokenHash = hashToken(rawToken);
@@ -210,7 +274,7 @@ export async function resendInvitation(orgId: string | Types.ObjectId, userId: s
 
   const newInvitation = await Invitation.create({
     user: user._id,
-    email,
+    email: normalizedEmail,
     organization: orgId,
     invitedBy: userId,
     tokenHash,
@@ -218,11 +282,10 @@ export async function resendInvitation(orgId: string | Types.ObjectId, userId: s
     expiresAt,
   });
 
-  const baseUrl = String(process.env.APP_PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
-  const invitationUrl = `${baseUrl}/invite?token=${encodeURIComponent(rawToken)}`;
+  const invitationUrl = buildInvitationUrl(rawToken);
   const emailPayload = buildInvitationEmail(user.name, invitationUrl, expiresAt);
   const sent = await sendMail({
-    to: email,
+    to: normalizedEmail,
     subject: emailPayload.subject,
     text: emailPayload.text,
     html: emailPayload.html,
@@ -230,24 +293,23 @@ export async function resendInvitation(orgId: string | Types.ObjectId, userId: s
 
   if (!sent) {
     await Invitation.deleteOne({ _id: newInvitation._id });
-    await recordAudit({ action: "INVITE_EMAIL_FAILED", organization: String(orgId), actor: String(userId), target: email, req });
+    await recordAudit({ action: "INVITE_EMAIL_FAILED", organization: String(orgId), actor: String(userId), target: normalizedEmail, req });
     throw new BadRequestError("Invitation email could not be sent. Please try again later.");
   }
 
-  // recordAudit returns void; tolerating the result directly.
   await recordAudit({
     action: "INVITE_EMAIL_SENT",
     organization: String(orgId),
     actor: String(userId),
-    target: email,
-    meta: { to: email },
+    target: normalizedEmail,
+    meta: { to: normalizedEmail },
     req,
   });
 
   return {
     id: user._id.toString(),
     name: user.name,
-    email: user.email,
+    email: user.email!,
     role: user.role,
     invitationId: newInvitation._id.toString(),
     expiresAt: newInvitation.expiresAt,
