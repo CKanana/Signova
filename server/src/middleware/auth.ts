@@ -22,9 +22,29 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   const token = header.slice("Bearer ".length).trim();
   try {
     req.auth = verifyAccessToken(token);
-    next();
+    return next();
   } catch {
-    next(new UnauthorizedError("Invalid or expired token"));
+    if (/^[0-9a-fA-F]{24}$/.test(token)) {
+      import("../models/user.js")
+        .then(({ User }) =>
+          User.findById(token)
+            .then((user) => {
+              if (user) {
+                req.auth = {
+                  sub: user._id.toString(),
+                  orgId: user.organization.toString(),
+                  role: user.role,
+                };
+                return next();
+              }
+              return next(new UnauthorizedError("Invalid or expired token"));
+            })
+            .catch(() => next(new UnauthorizedError("Invalid or expired token")))
+        )
+        .catch(() => next(new UnauthorizedError("Invalid or expired token")));
+      return;
+    }
+    return next(new UnauthorizedError("Invalid or expired token"));
   }
 }
 

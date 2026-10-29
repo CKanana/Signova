@@ -63,6 +63,25 @@ function writeStorage(key: string, value: string | null): void {
   }
 }
 
+export function applyOrganizationTheme(colors?: { primary?: string; background?: string }) {
+  if (typeof document === "undefined" || !colors) return;
+  const root = document.documentElement;
+  if (colors.primary) {
+    root.style.setProperty("--admin-primary", colors.primary);
+    root.style.setProperty("--signova-primary", colors.primary);
+    root.style.setProperty("--pr", colors.primary);
+    root.style.setProperty("--acc", colors.primary);
+    root.style.setProperty("--sb1", colors.primary);
+    root.style.setProperty("--sb2", colors.primary);
+    root.style.setProperty("--tb", colors.primary);
+  }
+  if (colors.background) {
+    root.style.setProperty("--admin-bg", colors.background);
+    root.style.setProperty("--signova-background", colors.background);
+    root.style.setProperty("--bg", colors.background);
+  }
+}
+
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUserSummary | null>(() => {
     const raw = readStorage(USER_KEY);
@@ -86,6 +105,18 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const refreshTokenRef = useRef<string | null>(readStorage(REFRESH_KEY));
   const refreshingRef = useRef<Promise<boolean> | null>(null);
 
+  const loadOrganization = useCallback(async () => {
+    try {
+      const res = await adminApi.getOrganizationSettings();
+      if (res?.profile) {
+        setOrganization(res.profile);
+        applyOrganizationTheme(res.profile.colors);
+      }
+    } catch {
+      // Ignored if unauthenticated or on login page
+    }
+  }, []);
+
   const storeSession = useCallback((access: string, refresh: string, nextUser: AdminUserSummary) => {
     accessTokenRef.current = access;
     refreshTokenRef.current = refresh;
@@ -96,7 +127,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setTwoFactorStage({ kind: "none" });
     console.log("[auth] storeSession", { userId: nextUser.id, role: nextUser.role });
-  }, []);
+    void loadOrganization();
+  }, [loadOrganization]);
 
   const dropSession = useCallback(() => {
     accessTokenRef.current = null;
@@ -154,6 +186,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       if (res.user && res.user.role === "ADMIN") {
         setUser(res.user);
         writeStorage(USER_KEY, JSON.stringify(res.user));
+        void loadOrganization();
       } else {
         console.log("[auth] admin reloadUser reject", { role: res.user?.role });
         dropSession();
@@ -169,6 +202,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
           if (retry.user && retry.user.role === "ADMIN") {
             setUser(retry.user);
             writeStorage(USER_KEY, JSON.stringify(retry.user));
+            void loadOrganization();
           } else {
             dropSession();
           }
@@ -181,7 +215,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [dropSession, tryRefresh]);
+  }, [dropSession, tryRefresh, loadOrganization]);
+
+  useEffect(() => {
+    if (organization?.colors) {
+      applyOrganizationTheme(organization.colors);
+    }
+  }, [organization]);
 
   useEffect(() => {
     reloadUser();

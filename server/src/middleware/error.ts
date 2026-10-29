@@ -36,6 +36,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
+  if ((err as any)?.name === "CastError") {
+    res.status(404).json({
+      error: {
+        code: "NOT_FOUND",
+        message: "Resource not found",
+      },
+    });
+    return;
+  }
+
   // Unknown errors: log detail server-side only, return generic message.
   // eslint-disable-next-line no-console
   console.error("[error]", err);

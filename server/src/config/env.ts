@@ -1,10 +1,13 @@
 import "dotenv/config";
 import { z } from "zod";
 
-/**
- * Centralized, validated environment configuration.
+/** @file Centralized, validated environment configuration.
  * Fails fast at boot if anything required is missing or malformed,
  * so the server never runs with insecure defaults.
+ *
+ * Base URLs are explicit, absolute, and trusted (never derived from the
+ * request Host header). They are used to build every emailed link so that a
+ * real invite email always contains a valid absolute URL.
  */
 
 const envSchema = z.object({
@@ -39,19 +42,36 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_USER: z.string().optional(),
   SMTP_APP_PASSWORD: z.string().optional(),
+
   // Base URL of the admin portal, used to build bootstrap setup links.
   // Must be a trusted value (never derived from the request Host header).
   ADMIN_PORTAL_URL: z.string().default("http://localhost:5174"),
+
   // Base URL of the staff web app, used to build password-reset links.
   PASSWORD_RESET_BASE_URL: z.string().default("http://localhost:5173"),
+
+  // Base URL of the staff web app, used to build invitation/setup links.
+  // The public-facing origin the admin sends invites to; used by the email
+  // template to produce an absolute URL.
+  APP_PUBLIC_BASE_URL: z.string().default("http://localhost:5173"),
+
   // Reset-token lifetime in minutes (target: 15).
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
+
+  // Single-source bootstrap setup token TTL.
+  BOOTSTRAP_SETUP_TOKEN_TTL_MS: z.number().int().positive().default(10 * 60 * 1000),
 });
 
-// Single-source bootstrap setup token TTL.
-export const BOOTSTRAP_SETUP_TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes
+function _isAbsoluteUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return typeof u.hostname === "string" && u.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
 
-function loadEnv() {
+function _loadEnv() {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -61,10 +81,76 @@ function loadEnv() {
     console.error(`Invalid environment configuration:\n${issues}`);
     process.exit(1);
   }
-  return parsed.data;
+
+  const raw = parsed.data as z.infer<typeof envSchema>;
+
+  // --- Absolute-URL validation (explicitly constructed, not concatenated) ---
+  const urlKeys: (keyof typeof raw)[] = ["APP_PUBLIC_BASE_URL", "ADMIN_PORTAL_URL"];
+  const problems: string[] = [];
+  for (const key of urlKeys) {
+    const value = raw[key];
+    if (!value) {
+      problems.push(`${key} is missing`);
+      continue;
+    }
+    if (!_isAbsoluteUrl(String(value))) {
+      problems.push(`${key} is not an absolute URL: ${value}`);
+    }
+  }
+  if (problems.length) {
+    // eslint-disable-next-line no-console
+    console.error("[config] Invalid base URL configuration:\n  - " + problems.join("\n  - "));
+    process.exit(1);
+  }
+
+  // --- Production: https required for every emailed-link base URL ---
+  if (raw.NODE_ENV === "production") {
+    for (const key of urlKeys) {
+      try {
+        const u = new URL(String(raw[key]));
+        if (u.protocol !== "https:") {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[config] ${key} must use https: in production (got ${u.protocol})`,
+          );
+          process.exit(1);
+        }
+      } catch (err) {
+        // _isAbsoluteUrl already returned false above
+      }
+    }
+  }
+
+  // --- Development: log a warning when a localhost default is in use ---
+  if (raw.NODE_ENV === "development") {
+    try {
+      const staff = new URL(String(raw.APP_PUBLIC_BASE_URL));
+      if (staff.hostname === "localhost") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[config] APP_PUBLIC_BASE_URL is http://localhost:${staff.port || 80} in development — confirm it points at the Staff app.`,
+        );
+      }
+    } catch {
+      // already reported above
+    }
+    try {
+      const admin = new URL(String(raw.ADMIN_PORTAL_URL));
+      if (admin.hostname === "localhost") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[config] ADMIN_PORTAL_URL is http://localhost:${admin.port || 80} in development — confirm it points at the Admin portal.`,
+        );
+      }
+    } catch {
+      // already reported above
+    }
+  }
+
+  return raw;
 }
 
-const env = loadEnv();
+const env = _loadEnv();
 
 export const config = {
   env: env.NODE_ENV,
@@ -90,7 +176,12 @@ export const config = {
     user: env.SMTP_USER?.trim(),
     appPassword: env.SMTP_APP_PASSWORD ? env.SMTP_APP_PASSWORD.replace(/\s+/g, "") : undefined,
   },
-  adminPortalUrl: env.ADMIN_PORTAL_URL.trim().replace(/\/$/, ""),
-  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.trim().replace(/\/$/, ""),
+  adminPortalUrl: env.ADMIN_PORTAL_URL.trim().replace(/\/+$/, ""),
+  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.trim().replace(/\/+$/, ""),
+  appPublicBaseUrl: env.APP_PUBLIC_BASE_URL.trim().replace(/\/+$/, ""),
   passwordResetTtlMinutes: env.PASSWORD_RESET_TTL_MINUTES,
+  BOOTSTRAP_SETUP_TOKEN_TTL_MS: env.BOOTSTRAP_SETUP_TOKEN_TTL_MS,
 } as const;
+
+// Single-source bootstrap setup token TTL, exported for scripts and services.
+export const BOOTSTRAP_SETUP_TOKEN_TTL_MS = config.BOOTSTRAP_SETUP_TOKEN_TTL_MS;

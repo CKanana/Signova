@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams, Navigate } from "react-router-dom";
 import { useStaffAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/States";
@@ -8,10 +7,22 @@ import brandIcon from "../assets/brand/signova-mark-purple.png";
 
 type SetupStage = "password" | "enroll" | "done";
 
-export function StaffSetup() {
-  const { loginStage, loginError, isSubmitting, confirmStaffSetup, cancelStaffSetup, startStaffSetup } = useStaffAuth();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
+interface StaffSetupProps {
+  token?: string | null;
+  onCancel?: () => void;
+}
+
+export function StaffSetup({ token: propToken, onCancel }: StaffSetupProps) {
+  const { loginStage, loginError, isSubmitting, enrollment, confirmStaffSetup, cancelStaffSetup, startStaffSetup } = useStaffAuth();
+  
+  const token = useMemo(() => {
+    if (propToken) return propToken;
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      return p.get("token") || "";
+    }
+    return "";
+  }, [propToken]);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -42,7 +53,31 @@ export function StaffSetup() {
   }, [loginStage, challengeToken]);
 
   if (!token) {
-    return <Navigate to="/login" replace />;
+    return (
+      <div className="admin-setup">
+        <div className="admin-setup__card">
+          <div className="admin-setup__header">
+            <img src={brandIcon} alt="Signova" />
+            <h1 className="admin-setup__title">Invalid Invitation Link</h1>
+            <p className="admin-setup__subtitle">
+              This setup link is missing or invalid. Please check the link from your invitation email or contact your administrator.
+            </p>
+          </div>
+          <div className="admin-setup__actions">
+            <Button
+              variant="primary"
+              block
+              onClick={() => {
+                if (onCancel) onCancel();
+                else window.location.href = "/";
+              }}
+            >
+              Back to Sign In
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const errorMessage = localError ?? loginError;
@@ -59,7 +94,7 @@ export function StaffSetup() {
       return;
     }
     try {
-      await startStaffSetup(token!, password);
+      await startStaffSetup(token, password);
     } catch (err: any) {
       setLocalError(err?.message ?? "Setup failed. Use the link from your email.");
     }
@@ -76,6 +111,15 @@ export function StaffSetup() {
     }
   }
 
+  function handleCancel() {
+    cancelStaffSetup();
+    if (onCancel) {
+      onCancel();
+    } else {
+      window.location.href = "/";
+    }
+  }
+
   if (stage === "enroll") {
     return (
       <div className="admin-setup">
@@ -86,10 +130,36 @@ export function StaffSetup() {
             <p className="admin-setup__subtitle">Scan the QR code with your authenticator app and enter the 6-digit code.</p>
           </div>
           {errorMessage ? <ErrorBanner message={errorMessage} /> : null}
+
+          {enrollment?.qrDataUrl ? (
+            <div className="admin-setup__field" style={{ textAlign: "center", marginBottom: "16px" }}>
+              <span className="admin-label" style={{ display: "block", marginBottom: "8px" }}>
+                1. Scan this QR code in your authenticator app
+              </span>
+              <img
+                src={enrollment.qrDataUrl}
+                alt="Two-factor QR code"
+                style={{
+                  display: "block",
+                  margin: "0 auto 8px",
+                  borderRadius: "12px",
+                  border: "1px solid #efe9d2",
+                  padding: "8px",
+                  background: "#ffffff",
+                }}
+                width={180}
+                height={180}
+              />
+              <p style={{ fontSize: "12px", color: "#68636b", margin: "4px 0" }}>
+                Manual key: <code style={{ fontWeight: "bold", background: "#f5f5f5", padding: "2px 6px", borderRadius: "4px" }}>{enrollment.secret}</code>
+              </p>
+            </div>
+          ) : null}
+
           <form onSubmit={handleEnrollSubmit}>
             <div className="admin-setup__field">
               <label className="admin-label" htmlFor="staff-enroll-code">
-                Authentication code
+                {enrollment?.qrDataUrl ? "2. Enter the 6-digit authentication code" : "Authentication code"}
               </label>
               <input
                 id="staff-enroll-code"
@@ -107,7 +177,7 @@ export function StaffSetup() {
               <Button type="submit" block loading={isSubmitting}>
                 {isSubmitting ? "Activating..." : "Activate and sign in"}
               </Button>
-              <Button variant="ghost" block onClick={cancelStaffSetup}>
+              <Button variant="ghost" block type="button" onClick={handleCancel}>
                 Start over
               </Button>
             </div>
@@ -172,6 +242,9 @@ export function StaffSetup() {
           <div className="admin-setup__actions">
             <Button type="submit" block loading={isSubmitting}>
               Continue
+            </Button>
+            <Button variant="ghost" block type="button" onClick={handleCancel}>
+              Cancel
             </Button>
           </div>
         </form>

@@ -19,7 +19,9 @@ export function applyTheme(theme) {
 export function useTheme() {
     const [theme, setThemeState] = useState(getInitialTheme);
     // Write data-theme on <html> so CSS (and portalled modals) can react.
-    useLayoutEffect(() => applyTheme(theme), [theme]);
+    useLayoutEffect(() => {
+        applyTheme(theme);
+    }, [theme]);
     const setTheme = useCallback((next) => {
         setThemeState(next);
         try {

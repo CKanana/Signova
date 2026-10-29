@@ -10,6 +10,9 @@ import { createInvitation } from "../services/invitationService.js";
 
 /** Admin service — org-scoped queries and mutations. */
 export async function getOrganization(orgId: string | Types.ObjectId) {
+  if (typeof orgId === "string" && !orgId.match(/^[0-9a-fA-F]{24}$/)) {
+    throw new NotFoundError("Organization not found");
+  }
   const org = await Organization.findById(orgId);
   if (!org) throw new NotFoundError("Organization not found");
   return org;
@@ -82,38 +85,29 @@ export async function createStaff(
   data: { name: string; email: string; phone?: string; role: Role },
   currentUserId: string,
   req: import("express").Request
-): Promise<{ user: import("mongoose").Document<unknown, {}, import("../../models/user.js").IUser>; invitation?: import("../services/invitationService.js").InvitationResult }> {
-  const existing = await User.findOne({ organization: orgId, email: data.email.toLowerCase() });
-  if (existing) throw new ConflictError("An account with this email already exists");
+): Promise<{ user: any; invitation?: import("../services/invitationService.js").InvitationResult }> {
   if (data.role === "ADMIN") {
-    const existingAdmin = await User.findOne({
+    const currentAdmin = await User.findOne({
+      _id: currentUserId,
       organization: orgId,
       role: "ADMIN",
-      _id: { $ne: currentUserId },
+      isActive: true,
     });
-    if (!existingAdmin) {
+    if (!currentAdmin) {
       throw new ForbiddenError("Only an existing administrator can create another administrator");
     }
   }
 
-  // Create the user first so we can pass the ID to the invitation flow.
-  const user = await User.create({
-    organization: orgId,
-    role: data.role,
-    name: data.name.trim(),
-    email: data.email.toLowerCase(),
+  const result = await createInvitation(orgId, currentUserId, {
+    name: data.name,
+    email: data.email,
     phone: data.phone,
-  });
-
-  // Create the invitation and send the initial setup email.
-  const invitation = await createInvitation(orgId, currentUserId, {
-    name: user.name,
-    email: user.email!,
+    role: data.role,
   }, req);
 
-  await recordAdminAudit("STAFF_CREATE", orgId, currentUserId, user._id.toString(), req);
+  await recordAdminAudit("STAFF_CREATE", orgId, currentUserId, result.id, req);
 
-  return { user, invitation };
+  return { user: result.user, invitation: result };
 }
 
 export async function updateStaff(
@@ -303,14 +297,28 @@ export async function updateTeller(
     serviceLabel: string;
     serviceDesk: string;
     counterNumber: string;
-    staffUser: string;
+    staffUser: string | null;
   }>,
   currentUserId: string,
   req: import("express").Request
 ): Promise<import("mongoose").Document<unknown, {}, import("../../models/teller.js").ITeller>> {
+  const updateData: any = { ...updates };
+  const unsetData: Record<string, 1> = {};
+
+  if ("staffUser" in updates) {
+    if (!updates.staffUser || updates.staffUser === "") {
+      delete updateData.staffUser;
+      unsetData.staffUser = 1;
+    }
+  }
+
+  const query: any = Object.keys(unsetData).length > 0
+    ? { ...updateData, $unset: unsetData }
+    : updateData;
+
   const teller = await Teller.findOneAndUpdate(
     { _id: tellerId, organization: orgId },
-    updates,
+    query,
     { new: true }
   );
   if (!teller) throw new NotFoundError("Teller not found");
@@ -325,6 +333,13 @@ export async function setTellerStatus(
   currentUserId: string,
   req: import("express").Request
 ): Promise<import("mongoose").Document<unknown, {}, import("../../models/teller.js").ITeller>> {
+  const current = await Teller.findOne({ _id: tellerId, organization: orgId });
+  if (!current) throw new NotFoundError("Teller not found");
+
+  if (current.status === "BUSY" && status === "FREE") {
+    throw new BadRequestError("Busy teller cannot be freed directly.");
+  }
+
   const session = await Session.findOne({
     organization: orgId,
     teller: tellerId,
@@ -358,19 +373,12 @@ export async function setTellerStatus(
 export async function assignStaffToTeller(
   orgId: string | Types.ObjectId,
   tellerId: string,
-  staffUserId: string,
+  staffUserId: string | null | undefined,
   currentUserId: string,
   req: import("express").Request
 ): Promise<import("mongoose").Document<unknown, {}, import("../../models/teller.js").ITeller>> {
   const teller = await Teller.findOne({ _id: tellerId, organization: orgId });
   if (!teller) throw new NotFoundError("Teller not found");
-  const user = await User.findOne({
-    _id: staffUserId,
-    organization: orgId,
-    role: "STAFF",
-    isActive: true,
-  });
-  if (!user) throw new NotFoundError("Staff user not found");
 
   const session = await Session.findOne({
     organization: orgId,
@@ -382,6 +390,23 @@ export async function assignStaffToTeller(
       "This teller has an active session and cannot be assigned. Free the session first."
     );
   }
+
+  if (!staffUserId || staffUserId === "") {
+    return updateTeller(orgId, tellerId, { staffUser: null }, currentUserId, req);
+  }
+
+  if (typeof staffUserId === "string" && !staffUserId.match(/^[0-9a-fA-F]{24}$/)) {
+    throw new NotFoundError("Staff user not found");
+  }
+
+  const user = await User.findOne({
+    _id: staffUserId,
+    organization: orgId,
+    role: "STAFF",
+    isActive: true,
+  });
+  if (!user) throw new NotFoundError("Staff user not found");
+
   return updateTeller(orgId, tellerId, { staffUser: staffUserId }, currentUserId, req);
 }
 

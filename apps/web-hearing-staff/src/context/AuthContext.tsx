@@ -332,13 +332,15 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setIsSubmitting(true);
     setLoginError(null);
     try {
-      const res = await (api as any).staffSetupAccept(token, password);
+      const res = await api.staffSetupAccept(token, password);
       if (res?.status === "mfa_enroll_required" && res.challengeToken) {
-        await (api as any).staffSetupEnrollStart(res.challengeToken);
+        const enroll = await api.staffSetupEnrollStart(res.challengeToken);
+        setEnrollment({ secret: enroll.secret, otpauthUrl: enroll.otpauthUrl, qrDataUrl: enroll.qrDataUrl });
         setLoginStage({ kind: "staff-setup", challengeToken: res.challengeToken });
       }
     } catch (err) {
       setLoginError(describeAuthError(err));
+      throw err;
     } finally {
       setIsSubmitting(false);
     }
@@ -350,12 +352,13 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     setLoginError(null);
     try {
       const challengeToken = (loginStage as any).challengeToken;
-      const result = await (api as any).staffSetupEnrollActivate(challengeToken, code);
+      const result = await api.staffSetupEnrollActivate(challengeToken, code);
       if (result?.accessToken && result?.refreshToken && result?.user) {
         adoptSession(result);
       }
     } catch (err) {
       setLoginError(describeAuthError(err));
+      throw err;
     } finally {
       setIsSubmitting(false);
     }

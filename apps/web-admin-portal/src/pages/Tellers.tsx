@@ -165,6 +165,24 @@ export function Tellers() {
     }
   };
 
+  const handleStaffAssign = async (teller: Teller, newStaffId: string) => {
+    try {
+      await adminApi.assignStaffToTeller(teller.id, newStaffId);
+      setTellers((prev) =>
+        prev.map((t) => (t.id === teller.id ? { ...t, staffUser: newStaffId || undefined } : t))
+      );
+      const staffName = newStaffId ? staffMap.get(newStaffId) : null;
+      setFeedback({
+        type: "success",
+        message: newStaffId
+          ? `Allocated ${staffName} to Counter ${teller.counterNumber}.`
+          : `Unassigned staff from Counter ${teller.counterNumber}.`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: "danger", message: err?.message ?? "Failed to allocate staff to counter." });
+    }
+  };
+
   const copyPairingCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
@@ -324,16 +342,38 @@ export function Tellers() {
                     </td>
 
                     <td>
-                      {assignedName ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            flexShrink: 0,
+                            color: t.staffUser ? "var(--admin-primary)" : "var(--admin-text-muted)",
+                          }}
+                        >
                           <StaffIcon className="w-3.5 h-3.5" />
-                          <span style={{ fontWeight: "600", color: "var(--admin-text)", fontSize: "13px" }}>
-                            {assignedName}
-                          </span>
-                        </div>
-                      ) : (
-                        <Badge variant="neutral" label="Unassigned" />
-                      )}
+                        </span>
+                        <Select
+                          value={t.staffUser ?? ""}
+                          onChange={(e) => handleStaffAssign(t, e.target.value)}
+                          style={{
+                            height: "30px",
+                            padding: "2px 8px",
+                            fontSize: "12px",
+                            fontWeight: t.staffUser ? "600" : "400",
+                            width: "160px",
+                            color: t.staffUser ? "var(--admin-text)" : "var(--admin-text-muted)",
+                          }}
+                          title="Quick-allocate staff member to this counter"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {staffUsers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
                     </td>
 
                     <td>

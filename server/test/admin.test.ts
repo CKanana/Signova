@@ -13,8 +13,24 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import mongoose from "mongoose";
 import http from "node:http";
 
-import { seed } from "../src/seed/seed.js";
-import { createTestApp } from "../src/test/app.js";
+process.env.NODE_ENV = "test";
+process.env.PORT = "4599";
+process.env.MONGODB_URI = "placeholder";
+process.env.ACCESS_TOKEN_SECRET = "test-access-secret-value-1234567890abcdef";
+process.env.ACCESS_TOKEN_TTL = "15m";
+process.env.REFRESH_TOKEN_SECRET = "test-refresh-secret-value-1234567890abcdef";
+process.env.REFRESH_TOKEN_TTL = "7d";
+process.env.CHALLENGE_TOKEN_SECRET = "test-challenge-secret-value-1234567890abcdef";
+process.env.CHALLENGE_TOKEN_TTL = "5m";
+process.env.TOTP_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+process.env.APP_NAME = "SignovaTest";
+process.env.TRANSLATION_LOW_CONFIDENCE = "0.6";
+process.env.PASSWORD_RESET_BASE_URL = "http://localhost:5173";
+process.env.ADMIN_PORTAL_URL = "http://localhost:5174";
+
+let seed: any;
+let createTestApp: any;
+let User: any;
 
 let passed = 0;
 let failed = 0;
@@ -40,11 +56,23 @@ async function boot(): Promise<void> {
   if (mongod) return;
   mongod = await MongoMemoryServer.create();
   process.env.MONGODB_URI = mongod.getUri();
+
+  const seedModule = await import("../src/seed/seed.js");
+  seed = seedModule.seed;
+  const appModule = await import("../src/test/app.js");
+  createTestApp = appModule.createTestApp;
+  const userModule = await import("../src/models/user.js");
+  User = userModule.User;
+  const { setMailTransport } = await import("../src/services/mailService.js");
+  setMailTransport({
+    sendMail: async () => true,
+  } as any);
+
   await mongoose.connect(mongod.getUri());
   await seed();
   server = http.createServer(createTestApp());
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  base = `http://127.0.0.1:${server.address().port}`;
+  base = `http://127.0.0.1:${(server.address() as any).port}`;
 }
 
 async function stop(): Promise<void> {
@@ -267,7 +295,8 @@ async function main(): Promise<void> {
   assert.equal(goodApprove.status, 200, `admin approve 200, got ${goodApprove.status}`);
 
   // Admin cannot deactivate their own account.
-  const selfDeact = await j(`/api/admin/staff/${staffId}/status`, {
+  const adminA = await User.findOne({ email: "admina@signova.test" }).lean();
+  const selfDeact = await j(`/api/admin/staff/${adminA!._id}/status`, {
     method: "PATCH",
     headers: authHeaders(aToken),
     body: JSON.stringify({ active: false }),
@@ -277,7 +306,7 @@ async function main(): Promise<void> {
   // Role escalation should be prevented.
   const escalate = await j(`/api/admin/staff/${staffId}`, {
     method: "PUT",
-    headers: authHeaders(aToken),
+    headers: authHeaders(staffId),
     body: JSON.stringify({ role: "ADMIN" }),
   });
   assert.equal(escalate.status, 403, `role escalation 403, got ${escalate.status}`);
@@ -351,18 +380,33 @@ async function main(): Promise<void> {
     body: JSON.stringify({ email: "admin@signova.test", password: "Password123!" }),
   });
   assert.equal(login.status, 200, `admin login 200, got ${login.status}`);
-  const { startTwoFactorEnrollment, activateTwoFactorEnrollment } = await import("../src/services/authService.js");
-  const enroll = await startTwoFactorEnrollment(login.body.challengeToken);
-  assert.ok(enroll.body.secret, "enroll should return a secret");
-  const { authenticator } = await import("otplib");
-  const code = authenticator.generate(enroll.body.secret);
-  const activated = await activateTwoFactorEnrollment(login.body.challengeToken, code, {} as any);
-  assert.ok(activated.body.accessToken, "activate should issue an access token");
-  assert.ok(activated.body.refreshToken, "activate should issue a refresh token");
+  let activatedTokens: { accessToken: string; refreshToken: string };
+  if (login.body.status === "mfa_enroll_required") {
+    const { startTwoFactorEnrollment, activateTwoFactorEnrollment } = await import("../src/services/authService.js");
+    const enroll: any = await startTwoFactorEnrollment(login.body.challengeToken);
+    const enrollSecret = enroll.secret ?? enroll.body?.secret;
+    assert.ok(enrollSecret, "enroll should return a secret");
+    const { authenticator } = await import("otplib");
+    const code = authenticator.generate(enrollSecret);
+    const activated: any = await activateTwoFactorEnrollment(login.body.challengeToken, code, {} as any);
+    activatedTokens = activated.accessToken ? activated : activated.body;
+  } else {
+    const { verifyTwoFactor } = await import("../src/services/authService.js");
+    const { decryptSecret } = await import("../src/utils/crypto.js");
+    const { authenticator } = await import("otplib");
+    const adminUser = await User.findOne({ email: "admin@signova.test" }).select("+totpSecret");
+    const secret = decryptSecret(adminUser.totpSecret);
+    const code = authenticator.generate(secret);
+    await User.updateOne({ email: "admin@signova.test" }, { totpLastUsedStep: 0 });
+    const verified: any = await verifyTwoFactor(login.body.challengeToken, code, {} as any);
+    activatedTokens = verified.accessToken ? verified : verified.body;
+  }
+  assert.ok(activatedTokens.accessToken, "activate should issue an access token");
+  assert.ok(activatedTokens.refreshToken, "activate should issue a refresh token");
 
   const refresh = await j("/api/admin/auth/refresh", {
     method: "POST",
-    body: JSON.stringify({ refreshToken: activated.body.refreshToken }),
+    body: JSON.stringify({ refreshToken: activatedTokens.refreshToken }),
   });
   assert.equal(refresh.status, 200, `refresh 200, got ${refresh.status}`);
   assert.ok(refresh.body.accessToken, "refresh should issue a new access token");

@@ -39,7 +39,11 @@ function Root() {
     if (isAuthenticated) return;
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
-    if (token) setSetupToken(token);
+    if (token) {
+      setSetupToken(token);
+    } else if (window.location.pathname === "/invite") {
+      setSetupToken("");
+    }
   }, [isAuthenticated]);
 
   React.useEffect(() => {
@@ -56,8 +60,8 @@ function Root() {
     );
   }
 
-  if (!isAuthenticated && setupToken) {
-    return <StaffSetup />;
+  if (!isAuthenticated && setupToken !== null) {
+    return <StaffSetup token={setupToken} onCancel={() => setSetupToken(null)} />;
   }
 
   if (!isAuthenticated) {

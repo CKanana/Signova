@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { validate } from "../../middleware/validate.js";
-import { acceptStaffSetup, activateStaffSetup } from "../services/staffSetupService.js";
+import { acceptInvitation } from "../services/invitationService.js";
+import { activateTwoFactorEnrollment } from "../../services/authService.js";
+import { validatePasswordPolicy } from "../../utils/passwordPolicy.js";
 
 const acceptSchema = z.object({
   token: z.string().min(1, "Setup token is required"),
@@ -10,12 +11,12 @@ const acceptSchema = z.object({
 
 export async function acceptStaffSetupHandler(req: Request, res: Response): Promise<void> {
   const body = acceptSchema.parse(req.body);
-  const passwordErrors = (await import("../../utils/passwordPolicy.js")).validatePasswordPolicy(body.password).reasons;
+  const passwordErrors = validatePasswordPolicy(body.password).reasons;
   if (passwordErrors.length > 0) {
     res.status(400).json({ error: { code: "VALIDATION_ERROR", message: passwordErrors[0], details: passwordErrors } });
     return;
   }
-  const result = await acceptStaffSetup({ token: body.token, password: body.password });
+  const result = await acceptInvitation(body.token, body.password, req);
   res.status(200).json(result);
 }
 
@@ -26,6 +27,6 @@ const activateSchema = z.object({
 
 export async function activateStaffSetupHandler(req: Request, res: Response): Promise<void> {
   const body = activateSchema.parse(req.body);
-  const result = await activateStaffSetup(body.challengeToken, body.code);
+  const result = await activateTwoFactorEnrollment(body.challengeToken, body.code, req);
   res.status(200).json(result);
 }
