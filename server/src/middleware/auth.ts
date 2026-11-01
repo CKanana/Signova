@@ -34,6 +34,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
                   sub: user._id.toString(),
                   orgId: user.organization.toString(),
                   role: user.role,
+                  scope: "full",
                 };
                 return next();
               }

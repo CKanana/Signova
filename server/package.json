@@ -11,6 +11,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/seed/run.ts",
+    "seed:test": "NODE_ENV=test node --import tsx src/seed/run.ts",
+    "seed:test:local": "NODE_ENV=test MONGODB_URI=mongodb://127.0.0.1:27018/signova_test tsx src/seed/run.ts",
     "staff:list-pending": "tsx src/scripts/manageStaff.ts list-pending",
     "staff:approve": "tsx src/scripts/manageStaff.ts approve",
     "test": "node --test --import tsx test/**/*.test.ts"
