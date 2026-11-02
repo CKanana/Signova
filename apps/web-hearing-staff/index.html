@@ -40,6 +40,15 @@
       rel="stylesheet"
     />
     <title>Signova | Hearing Staff</title>
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem("signova-theme");
+          if (!t && window.matchMedia("(prefers-color-scheme: dark)").matches) t = "dark";
+          if (t) document.documentElement.setAttribute("data-theme", t);
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -52,14 +52,6 @@ export function SettingsPage() {
 
   return (
     <div className="staff-stack">
-      <div>
-        <div className="staff-eyebrow">Account</div>
-        <h2 className="staff-section-title">Your account</h2>
-        <p className="staff-section-lede">
-          Your staff profile and security settings.
-        </p>
-      </div>
-
       <div className="staff-grid staff-grid--2">
         <Card>
           <CardHeader title="Profile" />

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useCallback, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Sidebar, type NavSection, type Organisation, type User, type SidebarFooterProps } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -7,6 +7,7 @@ import { useTheme } from "./useTheme";
 export interface AppShellProps {
   brandLabel: string;
   logoSrc?: string;
+  logoMarkSrc?: string;
   organization?: Organisation;
   user?: User;
   onSignOut?: () => void;
@@ -44,7 +45,7 @@ function readCollapsed(): boolean {
 }
 
 export function AppShell({
-  brandLabel, logoSrc, organization, user, onSignOut, footer, navSections,
+  brandLabel, logoSrc, logoMarkSrc, organization, user, onSignOut, footer, navSections,
   title, subtitle, routeSection, statusPill, onRefresh, onMenu, children,
 }: AppShellProps) {
   const { theme, toggle } = useTheme();
@@ -82,6 +83,7 @@ export function AppShell({
       <Sidebar
         brandLabel={brandLabel}
         logoSrc={logoSrc}
+        logoMarkSrc={logoMarkSrc}
         organisation={organization}
         user={user}
         onSignOut={onSignOut}

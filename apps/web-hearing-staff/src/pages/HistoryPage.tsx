@@ -68,7 +68,7 @@ function tellerName(session: SessionDetail, tellers: Array<{ _id: string; name: 
 }
 
 export function HistoryPage() {
-  const { tellers, user } = useStaffWorkspace();
+  const { tellers } = useStaffWorkspace();
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [sessions, setSessions] = useState<SessionDetail[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -93,19 +93,8 @@ export function HistoryPage() {
     void load();
   }, [load]);
 
-  const roleHint =
-    user?.role === "ADMIN"
-      ? "As an administrator you see every session in the organization."
-      : "Showing sessions for your organization.";
-
   return (
     <div className="staff-stack">
-      <div>
-        <div className="staff-eyebrow">History</div>
-        <h2 className="staff-section-title">Session history</h2>
-        <p className="staff-section-lede">{roleHint}</p>
-      </div>
-
       {error ? <ErrorBanner message={error} action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>} /> : null}
 
       <div className="staff-row staff-row--wrap">

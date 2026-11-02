@@ -75,6 +75,7 @@
 }
 .app-sidebar__logo { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .app-sidebar__logo-img { height: 34px; width: auto; flex: none; filter: brightness(0) invert(1); }
+.app-sidebar__logo-mark-img { height: 34px; width: 34px; object-fit: contain; flex: none; }
 .app-sidebar__logo-mark {
   width: 34px; height: 34px; flex: none; border-radius: 10px;
   background: #FFFFFF; color: #5B2A86; display: grid; place-items: center;

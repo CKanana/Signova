@@ -1,66 +1,114 @@
 /*
- * Signova staff web design system.
+ * Signova staff web design system — token layer.
  *
- * A pure CSS-variable token layer consumed by every staff component. The
- * existing Signova tokens (shared/constants/theme.ts) are the source of
- * truth and are NOT changed — this file only ADDS the extended brand
- * palette documented in the Signova Brand Identity Styleboard so the
- * staff dashboard belongs to the same product family as the mobile app.
- *
- * Token ownership: mobile app and staff app share the same token names so a
- * future org-driven theming (Organization.colors.primary/background) can
- * override both surfaces from one place.
+ * Re-points all --signova-* tokens to the shared shell tokens defined
+ * in shared/app-shell/src/app-shell.css (--bg, --card, --bd, --tx, --mu, --pr,
+ * --soft, --sb1, --sb2, --tb), mirroring the Admin portal theme.
  */
+
+:root,
+:root[data-theme="light"] {
+  /* Surfaces & canvas */
+  --signova-background:      var(--bg, #F7F1E3);
+  --signova-surface:         var(--card, #FDF8EC);
+  --signova-border:          var(--bd, #E9E2D7);
+
+  /* Typography */
+  --signova-text:            var(--tx, #1E1B2E);
+  --signova-muted-text:      var(--mu, #6B6575);
+
+  /* Brand */
+  --signova-primary:         var(--pr, #5B2A86);
+  --signova-royal:           var(--pr, #5B2A86);
+  --signova-on-primary:      #FFFFFF;
+  --signova-selected:        var(--soft, #F1E8FA);
+  --signova-lavender-chip:   var(--soft, #F1E8FA);
+  --signova-corn:            #F6EEDB;
+  --signova-deep:            var(--sb2, #5B2A86);
+  --signova-dark:            #1E1B2E;
+  --signova-focus:           #315EA8;
+
+  /* Semantics (matching Admin light mode) */
+  --signova-success:         #177C45;
+  --signova-success-chip:    #E6F5EC;
+  --signova-warning:         #9E5B00;
+  --signova-warning-chip:    #FFF2DD;
+  --signova-danger:          #B82821;
+  --signova-danger-chip:     #FDECEA;
+
+  /* Elevation (matching Admin light mode) */
+  --shadow-card:             0 2px 6px rgba(28, 25, 33, 0.05);
+  --shadow-card-selected:    0 6px 18px rgba(91, 42, 134, 0.14);
+  --shadow-panel:            0 10px 30px rgba(28, 25, 33, 0.08);
+
+  /* Teller control inside purple sidebar footer */
+  --staff-teller-bg:         rgba(255, 255, 255, 0.12);
+  --staff-teller-border:     rgba(255, 255, 255, 0.25);
+  --staff-teller-text:       #FFFFFF;
+  --staff-teller-sub:        #E2D5F3;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  /* Surfaces & canvas */
+  --signova-background:      var(--bg, #15101F);
+  --signova-surface:         var(--card, #211A2E);
+  --signova-border:          var(--bd, #372B4D);
+
+  /* Typography */
+  --signova-text:            var(--tx, #F3EDF8);
+  --signova-muted-text:      var(--mu, #B8ABCB);
+
+  /* Brand */
+  --signova-primary:         var(--pr, #7B43BC);
+  --signova-royal:           var(--pr, #7B43BC);
+  --signova-on-primary:      #FFFFFF;
+  --signova-selected:        var(--soft, #2C2142);
+  --signova-lavender-chip:   var(--soft, #2C2142);
+  --signova-corn:            #1B1527;
+  --signova-deep:            var(--sb2, #38206A);
+  --signova-dark:            #F3EDF8;
+  --signova-focus:           #8B6FD0;
+
+  /* Semantics (matching Admin dark mode) */
+  --signova-success:         #4FB89A;
+  --signova-success-chip:    #2A3F38;
+  --signova-warning:         #E8A33D;
+  --signova-warning-chip:    #3A2F1F;
+  --signova-danger:          #E0706A;
+  --signova-danger-chip:     #3A2826;
+
+  /* Elevation (matching Admin dark mode) */
+  --shadow-card:             0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-card-selected:    0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-panel:            0 10px 30px rgba(0, 0, 0, 0.6);
+
+  /* Teller control inside purple sidebar footer */
+  --staff-teller-bg:         rgba(255, 255, 255, 0.08);
+  --staff-teller-border:     rgba(255, 255, 255, 0.18);
+  --staff-teller-text:       #FFFFFF;
+  --staff-teller-sub:        #E2D5F3;
+
+  color-scheme: dark;
+}
+
 :root {
-  /* ---- Core Signova palette (mirrors shared/constants/theme.ts) ---- */
-  --signova-primary: #5b2a86;
-  --signova-on-primary: #ffffff;
-  --signova-background: #f7f0e0;
-  /* Cards/panels use a warm corn-silk surface, not stark white, so the
-     dashboard stays in the purple/corn-silk Signova identity. */
-  --signova-surface: #fff9eb;
-  --signova-text: #241f27;
-  --signova-muted-text: #68636b;
-  --signova-border: #ded8c8;
-  --signova-success: #1b7548;
-  --signova-warning: #965300;
-  --signova-danger: #b3261e;
-  --signova-focus: #315ea8;
-
-  /* ---- Extended brand tokens (Styleboard: additive, non-breaking) ---- */
-  --signova-royal: #6a3db8;
-  --signova-lavender: #c9b4ff;
-  --signova-deep: #4b3b6b;
-  --signova-dark: #1e1b2e;
-  --signova-corn: #f8eed4;
-  --signova-selected: #f5effa;
-  --signova-lavender-chip: #f0e8f6;
-  --signova-success-chip: #e8f3e9;
-  --signova-warning-chip: #fdf0dc;
-  --signova-danger-chip: #fbe9e7;
-
-  /* ---- Spacing scale (matches mobile theme.spacing) ---- */
+  /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
-  /* ---- Radii (matches mobile theme.radii) ---- */
+  /* Radii */
   --radius-control: 12px;
   --radius-panel: 20px;
   --radius-pill: 999px;
 
-  /* ---- Typography ---- */
-  --font-heading: "Manrope", "Segoe UI", sans-serif;
-  --font-body: "DM Sans", "Segoe UI", sans-serif;
-
-  /* ---- Elevation (soft, warm) ---- */
-  --shadow-card: 0 3px 9px rgba(38, 27, 48, 0.06);
-  --shadow-card-selected: 0 6px 16px rgba(91, 42, 134, 0.16);
-  --shadow-panel: 0 10px 30px rgba(38, 27, 48, 0.08);
-
-  color-scheme: light;
+  /* Typography */
+  --font-heading: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * {
@@ -91,8 +139,6 @@ select {
   color: inherit;
 }
 
-/* ---------- Accessibility primitives ---------- */
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -105,7 +151,6 @@ select {
   border: 0;
 }
 
-/* Visible, consistent focus ring for every interactive element. */
 :focus-visible {
   outline: 3px solid var(--signova-focus);
   outline-offset: 2px;

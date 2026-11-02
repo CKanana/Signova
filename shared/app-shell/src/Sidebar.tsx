@@ -24,8 +24,9 @@ export type SidebarFooterProps = ReactNode;
 
 export interface SidebarProps {
   brandLabel: string;
-  /** Real Signova mark; shown white on the purple sidebar. Falls back to "S". */
+  /** Real Signova mark/lockup; shown on the purple sidebar. Falls back to "S". */
   logoSrc?: string;
+  logoMarkSrc?: string;
   organisation?: Organisation;
   user?: User;
   onSignOut?: () => void;
@@ -37,7 +38,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar({
-  brandLabel, logoSrc, organisation, user, onSignOut,
+  brandLabel, logoSrc, logoMarkSrc, organisation, user, onSignOut,
   navSections, footer, collapsed, isDrawerOpen, onToggleCollapse,
 }: SidebarProps) {
   const { pathname } = useLocation();
@@ -51,7 +52,9 @@ export function Sidebar({
     >
       <div className="app-sidebar__header">
         <div className="app-sidebar__logo">
-          {logoSrc ? (
+          {collapsed && logoMarkSrc ? (
+            <img className="app-sidebar__logo-mark-img" src={logoMarkSrc} alt="Signova" />
+          ) : logoSrc ? (
             <img className="app-sidebar__logo-img" src={logoSrc} alt="Signova" />
           ) : (
             <span className="app-sidebar__logo-mark">S</span>

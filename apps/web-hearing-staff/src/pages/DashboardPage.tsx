@@ -29,7 +29,6 @@ interface DashboardPageProps {
 export function DashboardPage({ onOpenSession, onOpenHistory }: DashboardPageProps) {
   const {
     organization,
-    user,
     assignedTellers,
     tellers,
     isLoadingOrg,
@@ -45,17 +44,6 @@ export function DashboardPage({ onOpenSession, onOpenHistory }: DashboardPagePro
 
   return (
     <div className="staff-stack">
-      <div>
-        <div className="staff-eyebrow">Dashboard</div>
-        <h2 className="staff-section-title">
-          {user ? `Hello, ${user.name.split(" ")[0]}` : "Staff dashboard"}
-        </h2>
-        <p className="staff-section-lede">
-          This is your communication desk. When a Deaf user selects your counter, their request
-          arrives here in real time.
-        </p>
-      </div>
-
       {error ? <ErrorBanner message={error} /> : null}
 
       {pendingRequest ? (

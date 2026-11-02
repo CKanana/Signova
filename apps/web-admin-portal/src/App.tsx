@@ -15,7 +15,8 @@ import { AccountSettings } from "./pages/AccountSettings";
 import { NotFound } from "./pages/NotFound";
 import { DashboardIcon, StaffIcon, TellerIcon, SessionIcon, AuditIcon, SettingsIcon, UserIcon, LogoutIcon } from "./components/ui";
 import { AppShell, type NavSection } from "../../../shared/app-shell/src";
-import signovaMarkLight from "./assets/brand/signova-mark-light.png";
+import signovaLogoLight from "../../../shared/brand-assets/signova-logo-horizontal-light.png";
+import signovaMarkLight from "../../../shared/brand-assets/signova-mark-light.png";
 
 // ---- Shared shell navigation configuration (Admin) ----------------------
 
@@ -99,7 +100,8 @@ function AdminProtectedRoute({ children }: { children: ReactNode }) {
     <>
       <AppShell
         brandLabel="ADMIN PORTAL"
-        logoSrc={organization?.logoUrl || signovaMarkLight}
+        logoSrc={organization?.logoUrl || signovaLogoLight}
+        logoMarkSrc={signovaMarkLight}
         organization={{ name: organization?.name ?? "", serviceName: organization?.serviceName }}
         user={{ name: user.name, role: user.role, initials: initials(user.name) }}
         onSignOut={() => setShowLogoutConfirm(true)}
