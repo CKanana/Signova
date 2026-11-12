@@ -22,5 +22,10 @@
 
 const FALLBACK_API_URL = "http://localhost:4000";
 
+/** M4b on-device toggle. Set EXPO_PUBLIC_USE_MODEL=true to enable the real
+ *  TFLite model (dev build / physical device). Leave false for Expo Go and
+ *  the web build, which fall back to the mock placeholder. */
+export const USE_MODEL = process.env.EXPO_PUBLIC_USE_MODEL === "true";
+
 export const API_BASE_URL: string =
   (typeof process !== "undefined" && process.env.EXPO_PUBLIC_API_URL) || FALLBACK_API_URL;

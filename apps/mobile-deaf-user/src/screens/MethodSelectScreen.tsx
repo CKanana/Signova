@@ -23,7 +23,7 @@ export function MethodSelectScreen() {
 
   const handleSelectText = () => {
     setMethod("text");
-    goToStep("text");
+    goToStep("tellers");
   };
 
   return (

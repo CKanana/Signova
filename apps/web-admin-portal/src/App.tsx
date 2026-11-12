@@ -1,6 +1,7 @@
 import React, { ReactNode, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AdminAuthProvider, useAdminAuth } from "./context/AdminAuthContext";
+import { ToastProvider } from "./context/ToastContext";
 import { Spinner } from "./components/ui";
 import { ConfirmDialog } from "./components/ui";
 import { Login } from "./pages/Login";
@@ -143,78 +144,24 @@ function AdminProtectedRoute({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AdminAuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/admin-setup" element={<AdminSetup />} />
-          <Route path="/" element={<Navigate to="/admin/overview" replace />} />
-          <Route
-            path="/admin"
-            element={
-              <AdminProtectedRoute>
-                <Navigate to="/admin/overview" replace />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/overview"
-            element={
-              <AdminProtectedRoute>
-                <Overview />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/staff"
-            element={
-              <AdminProtectedRoute>
-                <Staff />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/tellers"
-            element={
-              <AdminProtectedRoute>
-                <Tellers />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/sessions"
-            element={
-              <AdminProtectedRoute>
-                <Sessions />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/audit"
-            element={
-              <AdminProtectedRoute>
-                <Audit />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/settings"
-            element={
-              <AdminProtectedRoute>
-                <OrganizationSettings />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/account"
-            element={
-              <AdminProtectedRoute>
-                <AccountSettings />
-              </AdminProtectedRoute>
-            }
-          />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </AdminAuthProvider>
+      <ToastProvider>
+        <AdminAuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/admin-setup" element={<AdminSetup />} />
+            <Route path="/" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/admin" element={<AdminProtectedRoute><Navigate to="/admin/overview" replace /></AdminProtectedRoute>} />
+            <Route path="/admin/overview" element={<AdminProtectedRoute><Overview /></AdminProtectedRoute>} />
+            <Route path="/admin/staff" element={<AdminProtectedRoute><Staff /></AdminProtectedRoute>} />
+            <Route path="/admin/tellers" element={<AdminProtectedRoute><Tellers /></AdminProtectedRoute>} />
+            <Route path="/admin/sessions" element={<AdminProtectedRoute><Sessions /></AdminProtectedRoute>} />
+            <Route path="/admin/audit" element={<AdminProtectedRoute><Audit /></AdminProtectedRoute>} />
+            <Route path="/admin/settings" element={<AdminProtectedRoute><OrganizationSettings /></AdminProtectedRoute>} />
+            <Route path="/admin/account" element={<AdminProtectedRoute><AccountSettings /></AdminProtectedRoute>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AdminAuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 }

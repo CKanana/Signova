@@ -1,0 +1,58 @@
+process.env.NODE_ENV = "test";
+process.env.PORT = "4598";
+process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/signova_test";
+process.env.ACCESS_TOKEN_SECRET = "test-access-secret-value-1234567890abcdef";
+process.env.ACCESS_TOKEN_TTL = "15m";
+process.env.REFRESH_TOKEN_SECRET = "test-refresh-secret-value-1234567890abcdef";
+process.env.REFRESH_TOKEN_TTL = "7d";
+process.env.CHALLENGE_TOKEN_SECRET = "test-challenge-secret-value-1234567890abcdef";
+process.env.CHALLENGE_TOKEN_TTL = "5m";
+process.env.TOTP_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef";
+process.env.APP_NAME = "SignovaTest";
+process.env.TRANSLATION_LOW_CONFIDENCE = "0.6";
+
+(async () => {
+  const { MongoMemoryServer } = await import("mongodb-memory-server");
+  const mem = await MongoMemoryServer.create();
+  process.env.MONGODB_URI = mem.getUri();
+  const mongoose = await import("mongoose");
+  await mongoose.connect(mem.getUri());
+  const { seed } = await import("../../server/src/seed/seed.js");
+  await seed();
+  const { createTestApp } = await import("../../server/src/test/app.js");
+  const app = createTestApp();
+  const http = await import("node:http");
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const port = server.address().port;
+  const base = "http://127.0.0.1:" + port;
+  const { login, startTwoFactorEnrollment, activateTwoFactorEnrollment } = await import("../../server/src/services/authService.js");
+  const { authenticator } = await import("otplib");
+  let r = await login("admin@signova.test", "Password123!", {});
+  console.log("admin login status:", r.status, "has challenge:", !!r.challengeToken);
+  const adminEnroll = await startTwoFactorEnrollment(r.challengeToken!);
+  const adminCode = authenticator.generate(adminEnroll.secret);
+  const adminAct = await activateTwoFactorEnrollment(r.challengeToken!, adminCode, {});
+  console.log("admin activated:", adminAct.status, "accessToken len:", adminAct.accessToken?.length);
+
+  r = await login("grace@signova.test", "Password123!", {});
+  console.log("staff login status:", r.status, "has challenge:", !!r.challengeToken);
+  const staffEnroll = await startTwoFactorEnrollment(r.challengeToken!);
+  const staffCode = authenticator.generate(staffEnroll.secret);
+  const staffAct = await activateTwoFactorEnrollment(r.challengeToken!, staffCode, {});
+  console.log("staff activated:", staffAct.status, "accessToken len:", staffAct.accessToken?.length);
+
+  const token = staffAct.accessToken!;
+  // console.log("DEBUG staffTokenA len:", token.length);
+  // const res1 = await fetch(base + "/api/staff", { headers: { authorization: "Bearer " + token } });
+  // console.log("DEBUG GET /api/staff:", res1.status, JSON.stringify(await res1.json()));
+  // const res2 = await fetch(base + "/api/admin/staff", { headers: { authorization: "Bearer " + token } });
+  // console.log("DEBUG GET /api/admin/staff:", res2.status, JSON.stringify(await res2.json()));
+  // const res3 = await fetch(base + "/api/tellers", { headers: { authorization: "Bearer " + token } });
+  // console.log("DEBUG GET /api/tellers:", res3.status, JSON.stringify(await res3.json()));
+  const res2 = await fetch(base + "/api/organizations/me", { headers: { authorization: "Bearer " + token } });
+  console.log("GET /api/organizations/me as staff:", res2.status, await res2.json());
+  await new Promise((resolve) => server.close(() => resolve()));
+  await mem.stop();
+  console.log("DONE");
+})().catch((e) => { console.error("FATAL:", e.message, e.stack); process.exit(1); });

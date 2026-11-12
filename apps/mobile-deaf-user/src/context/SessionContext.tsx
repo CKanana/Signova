@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
+import { Platform } from "react-native";
 import {
   Step,
   CommunicationMethod,
@@ -8,12 +9,27 @@ import {
   AccessibilitySettings,
   SessionContextValue,
 } from "../../../../shared/types/session";
-import { Teller, TranslateResponse } from "../../../../shared/types/mobile";
 import { api, ApiError, setAuthToken, getAuthToken } from "../services/api";
 import { connectSocket, disconnectSocket, isConnected as socketIsConnected } from "../services/socket";
 import { getDeviceId } from "../services/deviceId";
 import { requestTranslation } from "../services/translation";
-import type { Translation } from "../../../../shared/types/translation";
+import type { Teller, TranslateResponse } from "../../../../shared/types/mobile";
+import {
+  loadOnDeviceRecognizer,
+  loadModelMetadata,
+  recogniseOnDevice,
+  RecogniserBackend,
+  type ModelMetadata,
+} from "../model/recogniser";
+import { useHandRecorder, type HandLandmarksPerFrame } from "../hooks/useHandRecorder";
+import { useHandLandmarker } from "../hooks/useHandLandmarker";
+
+/** Toggle: on-device model (true) or the existing mock placeholder (false). */
+export const USE_MODEL = process.env.EXPO_PUBLIC_USE_MODEL === "true";
+
+/** Read the config flag for the UI layer; kept separate to avoid an import
+ *  cycle between session context (which uses the recogniser) and the screens. */
+export const USE_MODEL_FOR_UI = USE_MODEL;
 
 const DEFAULT_ORG_PLACEHOLDER: OrganisationInfo = {
   name: "Signova",
@@ -102,6 +118,148 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // --- On-device recognition state (M4b) ---
+  const [recognitionBackend, setRecognitionBackend] = useState<RecogniserBackend>("mock");
+  const [isRecognising, setIsRecognising] = useState<boolean>(false);
+  const [recogniseResult, setRecogniseResult] = useState<
+    | { results: { sign: string; probability: number }[]; timingMs: number; top1: string }
+    | null
+  >(null);
+  const [recogniseError, setRecogniseError] = useState<string | null>(null);
+
+  // Recorder: collects frames while in "live"/"perform" and hands the Float32Array
+  // to the recogniser on stop. Only active when on-device recognition is in use.
+  const {
+    isRecording,
+    start: startRecording,
+    stop: stopRecording,
+    reset: resetRecorder,
+    recording: frames,
+    pushFrame,
+  } = useHandRecorder(
+    (frame) => {
+      // Called by pushFrame. Tracks whether hands are currently visible.
+      setIsHandsDetected(!!frame.handLandmarks?.length);
+    },
+    () => {
+      // The stop action fires. Finish the clip, run the model, and hand the
+      // top-5 to the Validate screen. This is deliberately async-safe so the
+      // UI never blocks the existing stop action.
+      void runRecogniseOnStop();
+    },
+  );
+
+  // Hand landmarker: feeds MediaPipe detections into the recorder buffer.
+  // On platforms where the native module is unavailable (web, iOS, Expo Go),
+  // this is a no-op and the session falls back to zero-frame inference.
+  const {
+    isReady: isLandmarkerReady,
+    isUnavailable: isLandmarkerUnavailable,
+    initialise: initialiseLandmarker,
+    destroy: destroyLandmarker,
+  } = useHandLandmarker({
+    // Wire: native hand detection → recorder ring buffer
+    onFrame: pushFrame,
+  });
+
+  // Holds the loaded recogniser + metadata so the stop handler can run them.
+  const runModelRef = useRef<{
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recogniser: any;
+    metadata: ModelMetadata;
+  } | null>(null);
+
+  // --- On-device recognition lifecycle ---
+  // Eagerly loads the model once EXPO_PUBLIC_USE_MODEL=true so the first
+  // inference doesn't pay the load latency. Falls back to mock on any error.
+  useEffect(() => {
+    if (!USE_MODEL) return;
+
+    let cancelled = false;
+
+    const init = async () => {
+      setRecogniseError(null);
+
+      try {
+        if (Platform.OS === "web") {
+          setRecognitionBackend("mock");
+          return;
+        }
+
+        const recogniser = await loadOnDeviceRecognizer();
+        if (cancelled) return;
+
+        if (!recogniser) {
+          setRecognitionBackend("mock");
+          return;
+        }
+
+        setRecognitionBackend("model");
+        const metadata = await loadModelMetadata();
+        if (cancelled) return;
+        runModelRef.current = { recogniser, metadata };
+      } catch (err) {
+        if (!cancelled) {
+          setRecognitionBackend("mock");
+          setRecogniseError(
+            `On-device recognition not available in this build: ${(err as Error).message}`,
+          );
+        }
+      }
+    };
+
+    void init();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [USE_MODEL]);
+
+  /** Runs the on-device model on the clip captured by the recorder. */
+  const runRecogniseOnStop = useCallback(async () => {
+    if (!USE_MODEL) return;
+
+    try {
+      const model = runModelRef.current;
+      if (!model) {
+        setRecogniseError("Model stack not initialised.");
+        setRecognitionBackend("mock");
+        setIsRecognising(false);
+        return;
+      }
+      const { recogniser: _recogniser, metadata } = model;
+      setRecogniseResult(null);
+
+      // The recorder hook already tail-padded to 60 frames.
+      const sequence: Float32Array = frames?.sequence ?? new Float32Array(60 * 126);
+
+      // MODEL CONTRACT: signova_model.tflite already applies softmax —
+      // pass shouldApplySoftmax=false. Do NOT apply softmax again.
+      const result = await recogniseOnDevice(
+        sequence,
+        metadata,
+        /* shouldApplySoftmax */ false,
+      );
+      if (!result) {
+        setRecogniseError("On-device inference returned no result.");
+        setRecognitionBackend("mock");
+        setIsRecognising(false);
+        return;
+      }
+
+      setRecogniseResult({
+        results: result.results,
+        timingMs: result.timingMs,
+        top1: result.results[0]?.sign ?? "unknown",
+      });
+      setIsRecognising(false);
+    } catch (err) {
+      setRecogniseError(`On-device inference failed: ${(err as Error).message}`);
+      setRecognitionBackend("mock");
+      setIsRecognising(false);
+    }
+  }, [USE_MODEL, frames]);
+
   // Guard so we only bootstrap once.
   const bootstrapped = useRef(false);
 
@@ -127,7 +285,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       case "method": goToStep("welcome"); break;
       case "tellers": goToStep("method"); break;
       case "text": goToStep("method"); break;
-      case "connecting": goToStep(method === "sign" ? "tellers" : "method"); break;
+      case "connecting": goToStep("tellers"); break;
       case "permission": goToStep("method"); break;
       case "ready": goToStep("method"); break;
       case "live": goToStep("tellers"); break;
@@ -230,14 +388,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setError("No session token available.");
       return;
     }
+
+    // Capture the method at the time of connecting so the closure is stable.
+    const currentMethod = method;
+
     connectSocket(token, sessionId, {
       onSessionConnected: () => {
         setIsConnected(true);
-        goToStep("live");
+        // Route to the right screen based on communication method
+        goToStep(currentMethod === "text" ? "text" : "live");
+        // Start the MediaPipe hand detector when the live session begins.
+        // No-op if the native module is unavailable.
+        if (currentMethod !== "text") {
+          void initialiseLandmarker();
+        }
       },
       onStaffMessage: (m) => {
         setMessages((prev) => [...prev, mapBackendMessage(m)]);
-        goToStep("response");
+        // For text sessions, show inline in conversation rather than full-screen response
+        setStep((currentStep) => {
+          if (currentStep === "conversation" || currentStep === "text") {
+            return "conversation";
+          }
+          return "response";
+        });
       },
       onSessionEnded: () => {
         setIsConnected(false);
@@ -254,11 +428,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         goToStep("offline");
       }
     }, 6000);
-  }, [sessionId, goToStep]);
+  }, [sessionId, method, goToStep, initialiseLandmarker]);
 
-  /** Request a translation through the model-agnostic seam. */
+  /** Request a translation through the model-agnostic seam.
+   *
+   * When EXPO_PUBLIC_USE_MODEL=true AND on-device recognition has already run
+   * (recogniseResult is populated from the recorder's stop callback), we use
+   * the on-device top-1 result directly and skip the server call.
+   *
+   * When the model is disabled or unavailable, falls back to the server's
+   * placeholder translation endpoint — preserving the existing mock path.
+   */
   const requestTranslationResult = useCallback(async (): Promise<TranslateResponse | null> => {
     if (!sessionId) return null;
+
+    // --- On-device path ---
+    if (USE_MODEL && recogniseResult && recogniseResult.results.length > 0) {
+      const top1 = recogniseResult.results[0];
+      // Treat top-1 probability < 0.4 as low confidence so the user can
+      // correct via the UncertainFallback screen before sending.
+      const isLowConfidence = top1.probability < 0.4;
+      setDetectedGlossState(top1.sign);
+      setCurrentDraft(top1.sign);
+      setConfidence(top1.probability);
+      goToStep(isLowConfidence ? "uncertain" : "confirm");
+      // Return a synthetic TranslateResponse that matches the expected shape.
+      const syntheticResponse: TranslateResponse = {
+        translation: {
+          gloss: top1.sign,
+          confidence: top1.probability,
+          alternatives: recogniseResult.results.slice(1).map(r => ({
+            gloss: r.sign,
+            confidence: r.probability,
+          })),
+        },
+        latencyMs: recogniseResult.timingMs,
+        lowConfidence: isLowConfidence,
+      };
+      return syntheticResponse;
+    }
+
+    // --- Server (mock/placeholder) path ---
     setIsTranslating(true);
     setError(null);
     try {
@@ -266,7 +476,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setDetectedGlossState(result.translation.gloss);
       setCurrentDraft(result.translation.gloss);
       setConfidence(result.translation.confidence);
-      // Branch on the server's low-confidence flag.
       goToStep(result.lowConfidence ? "uncertain" : "confirm");
       return result;
     } catch (err) {
@@ -276,7 +485,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsTranslating(false);
     }
-  }, [sessionId, goToStep]);
+  }, [sessionId, goToStep, recogniseResult]);
 
   /** Confirm the current translation and send it to staff. */
   const confirmAndSend = useCallback(
@@ -306,13 +515,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!sessionId) return;
       setError(null);
       try {
+        // Emit over socket first for immediate real-time delivery to staff
+        const { emitMessage } = await import("../services/socket");
+        emitMessage(sessionId, { text, method: "text", isConfirmed: true });
+
+        // Also persist via REST so the message is stored even if socket drops
         const { message } = await api.sendMessage(sessionId, {
           sender: "USER",
           text,
           method: "text",
+          isConfirmed: true,
         });
-        setMessages((prev) => [...prev, mapBackendMessage(message)]);
-        goToStep("sent");
+        setMessages((prev) => {
+          // Avoid duplicate if the socket already echoed it back
+          const alreadyAdded = prev.some((m) => m.id === ((message as any).id ?? (message as any)._id));
+          if (alreadyAdded) return prev;
+          return [...prev, mapBackendMessage(message as any)];
+        });
+        goToStep("conversation");
       } catch (err) {
         setError(describeError(err));
       }
@@ -322,6 +542,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /** End the session on the backend and free the teller. */
   const endSession = useCallback(async (): Promise<void> => {
+    void destroyLandmarker();
     if (sessionId) {
       try {
         await api.endSession(sessionId);
@@ -336,6 +557,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [sessionId, goToStep]);
 
   const resetSession = useCallback(() => {
+    void destroyLandmarker();
     disconnectSocket();
     setAuthToken(null);
     setSessionId(null);
@@ -465,6 +687,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     isLoadingOrg,
     isLoadingTellers,
     error,
+    // M4b on-device recognition
+    recognitionBackend,
+    isRecognising,
+    recogniseResult,
+    recogniseError,
+    startRecording,
+    resetRecorder,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -30,8 +30,8 @@ export const settingsUpdateSchema = z.object({
   counterLabel: z.string().optional(),
   colors: z
     .object({
-      primary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-      background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+      primary: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     })
     .optional(),
   logoUrl: z.string().optional().nullable(),
@@ -46,9 +46,37 @@ export async function getOrgSettingsHandler(req: Request, res: Response): Promis
 
 export async function updateOrgSettingsHandler(req: Request, res: Response): Promise<void> {
   const body = settingsUpdateSchema.parse(req.body);
-  const org = await Organization.findByIdAndUpdate(req.auth!.orgId, body, {
+
+  // Build $set and $unset separately so null/undefined fields don't
+  // accidentally overwrite existing data with null.
+  const setData: Record<string, unknown> = {};
+  const unsetData: Record<string, 1> = {};
+
+  if (body.name !== undefined) setData.name = body.name;
+  if (body.shortName !== undefined) setData.shortName = body.shortName;
+  if (body.welcomeMessage !== undefined) setData.welcomeMessage = body.welcomeMessage;
+  if (body.serviceName !== undefined) setData.serviceName = body.serviceName;
+  if (body.counterLabel !== undefined) setData.counterLabel = body.counterLabel;
+  if (body.restrictRegistrationByDomain !== undefined) setData.restrictRegistrationByDomain = body.restrictRegistrationByDomain;
+  if (body.allowedEmailDomains !== undefined) setData.allowedEmailDomains = body.allowedEmailDomains;
+
+  if (body.colors !== undefined) {
+    if (body.colors.primary !== undefined) setData["colors.primary"] = body.colors.primary;
+    if (body.colors.background !== undefined) setData["colors.background"] = body.colors.background;
+  }
+
+  if (body.logoUrl === null || body.logoUrl === "") {
+    unsetData.logoUrl = 1;
+  } else if (body.logoUrl !== undefined) {
+    setData.logoUrl = body.logoUrl;
+  }
+
+  const updateOp: Record<string, unknown> = { $set: setData };
+  if (Object.keys(unsetData).length > 0) updateOp.$unset = unsetData;
+
+  const org = await Organization.findByIdAndUpdate(req.auth!.orgId, updateOp, {
     new: true,
-    runValidators: true,
+    runValidators: false,
   });
   if (!org) throw new NotFoundError("Organization not found");
   await recordAudit({ action: "ORG_UPDATE", actor: req.auth!.sub, organization: req.auth!.orgId, req });
@@ -241,10 +269,11 @@ export async function updateTellerHandler(req: Request, res: Response): Promise<
       serviceLabel: z.string().optional(),
       serviceDesk: z.string().min(1).optional(),
       counterNumber: z.string().min(1).optional(),
-      staffUser: z.string().optional(),
+      // Accept empty string and treat it as "unassign" (null)
+      staffUser: z.string().optional().transform((v) => (v === "" ? null : v)),
     })
     .parse(req.body);
-  const teller = await adminService.updateTeller(req.auth!.orgId, paramId(req), body, req.auth!.sub, req);
+  const teller = await adminService.updateTeller(req.auth!.orgId, paramId(req), body as any, req.auth!.sub, req);
   res.json({ teller });
 }
 
@@ -256,7 +285,9 @@ export async function setTellerStatusHandler(req: Request, res: Response): Promi
 
 export async function assignStaffToTellerHandler(req: Request, res: Response): Promise<void> {
   const body = z.object({ staffUserId: z.string().nullable().optional() }).parse(req.body);
-  const teller = await adminService.assignStaffToTeller(req.auth!.orgId, paramId(req), body.staffUserId ?? "", req.auth!.sub, req);
+  // Treat empty string as "unassign"
+  const staffUserId = body.staffUserId === "" ? null : (body.staffUserId ?? null);
+  const teller = await adminService.assignStaffToTeller(req.auth!.orgId, paramId(req), staffUserId, req.auth!.sub, req);
   res.json({ teller });
 }
 

@@ -7,6 +7,17 @@
     "**/*.ts",
     "**/*.tsx",
     "../../shared/constants/theme.ts",
-    "../../shared/types/**/*.ts"
+    "../../shared/types/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "model/**/*.ts",
+    "model/assets.d.ts",
+    "hooks/**/*.ts"
+  ],
+  "exclude": [
+    "src/model/*.test.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/*.test.tsx"
   ]
 }

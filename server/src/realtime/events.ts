@@ -24,6 +24,12 @@ export const S2C_STAFF = {
   SESSION_ENDED: "session:ended",
 } as const;
 
+// Server → sender socket (direct ack, bypassing room membership).
+export const S2C_STAFF_FROM_SENDER = {
+  MESSAGE_ACKED: "message:acked",
+  MESSAGE_REJECTED: "message:rejected",
+} as const;
+
 export const NAMESPACE = "/signova";
 
 export function sessionRoom(sessionId: string): string {

@@ -59,6 +59,12 @@ export interface AccessibilitySettings {
   language: string;
 }
 
+export interface RecogniserResult {
+  results: { sign: string; probability: number }[];
+  timingMs: number;
+  top1: string;
+}
+
 import type { TranslateResponse, Teller } from "./mobile";
 
 export interface SessionContextValue {
@@ -104,4 +110,12 @@ export interface SessionContextValue {
   isLoadingOrg: boolean;
   isLoadingTellers: boolean;
   error: string | null;
+
+  // M4b on-device recognition (skip when EXPO_PUBLIC_USE_MODEL=false)
+  recognitionBackend: string;
+  isRecognising: boolean;
+  recogniseResult: RecogniserResult | null;
+  recogniseError: string | null;
+  startRecording: () => void;
+  resetRecorder: () => void;
 }

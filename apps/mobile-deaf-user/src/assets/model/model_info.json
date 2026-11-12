@@ -1,0 +1,15 @@
+{
+  "numClasses": 2000,
+  "inputShape": [1, 60, 126],
+  "inputName": "serving_default_landmark_sequence:0",
+  "outputName": "PartitionedCall:0",
+  "outputSoftmaxApplied": true,
+  "framesPerClip": 60,
+  "valuesPerFrame": 126,
+  "handsPerFrame": 2,
+  "landmarksPerHand": 21,
+  "coordsPerLandmark": 3,
+  "dataType": "FLOAT32",
+  "source": "WLASL-2000",
+  "note": "Labels not embedded. Provide labels.json with 2000 entries (WLASL-2000 vocabulary, index=class_id)."
+}

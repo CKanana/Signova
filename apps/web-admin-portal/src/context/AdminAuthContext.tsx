@@ -11,9 +11,9 @@ import { useNavigate } from "react-router-dom";
 import { adminApi, bindAuthAccessors, ApiError } from "../services/api";
 import type { AdminUserSummary, OrganizationProfile } from "../types/admin";
 
-const ACCESS_KEY = "signova.admin.accessToken";
-const REFRESH_KEY = "signova.admin.refreshToken";
-const USER_KEY = "signova.admin.user";
+/** Minimal shape of an organization as surfaced to the web apps.
+ * The mobile app uses the full OrganizationProfile; the web apps only
+ * read the staff-facing subset (name, serviceName, logoUrl, colors). */
 
 export type TwoFactorStage =
   | { kind: "none" }
@@ -42,7 +42,12 @@ export interface AdminAuthContextValue {
   signOut: () => Promise<void>;
   reloadUser: () => Promise<void>;
   setOrganization: (org: OrganizationProfile | null) => void;
+  loginWithGoogle: (googleIdToken: string) => Promise<void>;
 }
+
+const ACCESS_KEY = "signova.admin.accessToken";
+const REFRESH_KEY = "signova.admin.refreshToken";
+const USER_KEY = "signova.admin.user";
 
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
@@ -59,173 +64,220 @@ function writeStorage(key: string, value: string | null): void {
     if (value === null) window.sessionStorage.removeItem(key);
     else window.sessionStorage.setItem(key, value);
   } catch {
-    // sessionStorage unavailable in restricted environments
+    /* storage unavailable */
   }
 }
 
-export function applyOrganizationTheme(colors?: { primary?: string; background?: string }) {
-  if (typeof document === "undefined" || !colors) return;
-  const root = document.documentElement;
-  if (colors.primary) {
-    root.style.setProperty("--admin-primary", colors.primary);
-    root.style.setProperty("--signova-primary", colors.primary);
-    root.style.setProperty("--pr", colors.primary);
-    root.style.setProperty("--acc", colors.primary);
-    root.style.setProperty("--sb1", colors.primary);
-    root.style.setProperty("--sb2", colors.primary);
-    root.style.setProperty("--tb", colors.primary);
+function dropSession(): void {
+  writeStorage(ACCESS_KEY, null);
+  writeStorage(REFRESH_KEY, null);
+  writeStorage(USER_KEY, null);
+}
+
+function isAdminUser(user: AdminUserSummary | null): boolean {
+  return Boolean(user && user.role === "ADMIN");
+}
+
+function restoreSessionFromStorage():
+  | { accessToken: string; refreshToken: string; user: AdminUserSummary }
+  | null {
+  const accessToken = readStorage(ACCESS_KEY);
+  const refreshToken = readStorage(REFRESH_KEY);
+  const rawUser = readStorage(USER_KEY);
+  if (!accessToken || !refreshToken || !rawUser) return null;
+  let user: AdminUserSummary;
+  try {
+    user = JSON.parse(rawUser) as AdminUserSummary;
+  } catch {
+    return null;
   }
-  if (colors.background) {
-    root.style.setProperty("--admin-bg", colors.background);
-    root.style.setProperty("--signova-background", colors.background);
-    root.style.setProperty("--bg", colors.background);
-  }
+  return { accessToken, refreshToken, user };
+}
+
+export function applyOrganizationTheme(colors: { primary: string; background: string }): void {
+  document.documentElement.style.setProperty("--admin-primary", colors.primary);
+  document.documentElement.style.setProperty("--admin-background", colors.background);
 }
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AdminUserSummary | null>(() => {
-    const raw = readStorage(USER_KEY);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return null;
-    }
-  });
-
-  const [organization, setOrganization] = useState<OrganizationProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [twoFactorStage, setTwoFactorStage] = useState<TwoFactorStage>({ kind: "none" });
-
   const navigate = useNavigate();
 
-  const accessTokenRef = useRef<string | null>(readStorage(ACCESS_KEY));
-  const refreshTokenRef = useRef<string | null>(readStorage(REFRESH_KEY));
-  const refreshingRef = useRef<Promise<boolean> | null>(null);
+  const [user, setUser] = useState<AdminUserSummary | null>(null);
+  const [organization, setOrganizationState] = useState<OrganizationProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [twoFactorStage, setTwoFactorStage] = useState<TwoFactorStage>({ kind: "none" });
 
-  const loadOrganization = useCallback(async () => {
+  const refreshTokensRef = useRef<string | null>(null);
+  const authResponseRef = useRef<{ accessToken: string; refreshToken: string; user: AdminUserSummary } | null>(null);
+
+  // --- Token refresh (called automatically on 401) ---
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  const refreshTokens = useCallback(async (): Promise<boolean> => {
+    const rToken = refreshTokensRef.current;
+    if (!rToken) {
+      dropSession();
+      return false;
+    }
     try {
-      const res = await adminApi.getOrganizationSettings();
-      if (res?.profile) {
-        setOrganization(res.profile);
-        applyOrganizationTheme(res.profile.colors);
+      // `auth: false` so the refresh call itself does not require a token.
+      const res = await adminApi.refresh(rToken);
+      if (res.accessToken) {
+        writeStorage(ACCESS_KEY, res.accessToken);
+        refreshTokensRef.current = res.refreshToken;
+        setRefreshError(null);
+        return true;
       }
+      dropSession();
+      return false;
     } catch {
-      // Ignored if unauthenticated or on login page
+      dropSession();
+      return false;
     }
   }, []);
 
+  // `storeSession` is hoisted above `loginWithGoogle` so the latter can call it.
   const storeSession = useCallback((access: string, refresh: string, nextUser: AdminUserSummary) => {
-    accessTokenRef.current = access;
-    refreshTokenRef.current = refresh;
     writeStorage(ACCESS_KEY, access);
     writeStorage(REFRESH_KEY, refresh);
     writeStorage(USER_KEY, JSON.stringify(nextUser));
+    refreshTokensRef.current = refresh;
     setUser(nextUser);
-    setError(null);
-    setTwoFactorStage({ kind: "none" });
-    console.log("[auth] storeSession", { userId: nextUser.id, role: nextUser.role });
-    void loadOrganization();
-  }, [loadOrganization]);
-
-  const dropSession = useCallback(() => {
-    accessTokenRef.current = null;
-    refreshTokenRef.current = null;
-    writeStorage(ACCESS_KEY, null);
-    writeStorage(REFRESH_KEY, null);
-    writeStorage(USER_KEY, null);
-    setUser(null);
-    setOrganization(null);
-    setTwoFactorStage({ kind: "none" });
-  }, []);
-
-  const tryRefresh = useCallback(async (): Promise<boolean> => {
-    const rToken = refreshTokenRef.current;
-    if (!rToken) return false;
-
-    if (!refreshingRef.current) {
-      refreshingRef.current = (async () => {
-        try {
-          const res = await adminApi.refresh(rToken);
-          accessTokenRef.current = res.accessToken;
-          refreshTokenRef.current = res.refreshToken;
-          writeStorage(ACCESS_KEY, res.accessToken);
-          writeStorage(REFRESH_KEY, res.refreshToken);
-          return true;
-        } catch {
-          dropSession();
-          return false;
-        } finally {
-          refreshingRef.current = null;
-        }
-      })();
-    }
-    return refreshingRef.current;
-  }, [dropSession]);
-
-  // Connect api.ts accessor to our in-memory/sessionStorage token refs
-  useEffect(() => {
+    // Wire token accessors every time a session is stored (fresh login or restore).
+    // This ensures API calls immediately after login have a valid bearer token.
     bindAuthAccessors({
-      getAccessToken: () => accessTokenRef.current,
-      refreshTokens: tryRefresh,
+      getAccessToken: () => readStorage(ACCESS_KEY),
+      refreshTokens,
     });
-  }, [tryRefresh]);
+  }, [refreshTokens]);
 
-  // Initial session hydration
-  const reloadUser = useCallback(async () => {
-    if (!accessTokenRef.current) {
-      console.log("[auth] admin reloadUser skip: no access token");
-      setIsLoading(false);
-      return;
-    }
-    try {
-      const res = await adminApi.me();
-      console.log("[auth] admin reloadUser me", { hasUser: Boolean(res.user), role: res.user?.role });
-      if (res.user && res.user.role === "ADMIN") {
-        setUser(res.user);
-        writeStorage(USER_KEY, JSON.stringify(res.user));
+  // --- Auth bootstrap ---
+  useEffect(() => {
+    const restored = restoreSessionFromStorage();
+    if (restored) {
+      authResponseRef.current = restored;
+      if (isAdminUser(restored.user)) {
+        setUser(restored.user);
+        refreshTokensRef.current = restored.refreshToken;
+        // Wire the token accessors (and enable transparent 401 retry) once the
+        // session is restored. Tokens live in sessionStorage, so read from there
+        // (not from `user`) so they are never stale after a re-render.
+        bindAuthAccessors({
+          getAccessToken: () => readStorage(ACCESS_KEY),
+          refreshTokens,
+        });
         void loadOrganization();
       } else {
-        console.log("[auth] admin reloadUser reject", { role: res.user?.role });
         dropSession();
       }
-    } catch (err: any) {
-      console.log("[auth] admin reloadUser me error", { message: err?.message });
-      const refreshed = await tryRefresh();
-      console.log("[auth] admin reloadUser refresh", { refreshed });
-      if (refreshed) {
-        try {
-          const retry = await adminApi.me();
-          console.log("[auth] admin reloadUser me after refresh", { hasUser: Boolean(retry.user), role: retry.user?.role });
-          if (retry.user && retry.user.role === "ADMIN") {
-            setUser(retry.user);
-            writeStorage(USER_KEY, JSON.stringify(retry.user));
-            void loadOrganization();
-          } else {
-            dropSession();
-          }
-        } catch {
-          dropSession();
-        }
+    }
+    setIsLoading(false);
+  }, []);
+
+  // --- Load org ---
+  const loadOrganization = useCallback(async () => {
+    try {
+      const { profile } = await adminApi.getOrganizationSettings();
+      setOrganizationState(profile);
+      applyOrganizationTheme(profile.colors ?? { primary: "", background: "" });
+    } catch {
+      // Org is optional for anonymous setup; ignore.
+    }
+  }, []);
+
+  // --- Logout ---
+  const signOut = useCallback(async () => {
+    const rToken = refreshTokensRef.current;
+    if (rToken) {
+      try {
+        await adminApi.logout(rToken);
+      } catch {
+        // Server revocation best-effort
+      }
+    }
+    dropSession();
+    setUser(null);
+    setOrganizationState(null);
+    setTwoFactorStage({ kind: "none" });
+    navigate("/admin/login", { replace: true });
+  }, [navigate]);
+
+  // --- Reload ---
+  const reloadUser = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const retry = await adminApi.me();
+      console.log("[auth] admin reloadUser me after refresh", { hasUser: Boolean(retry.user), role: retry.user?.role });
+      if (retry.user && isAdminUser(retry.user)) {
+        setUser(retry.user);
+        writeStorage(USER_KEY, JSON.stringify(retry.user));
+        void loadOrganization();
       } else {
         dropSession();
       }
+    } catch {
+      dropSession();
     } finally {
       setIsLoading(false);
     }
-  }, [dropSession, tryRefresh, loadOrganization]);
+  }, [dropSession, loadOrganization]);
 
-  useEffect(() => {
-    if (organization?.colors) {
-      applyOrganizationTheme(organization.colors);
+  // --- Google login ---
+  const loginWithGoogle = useCallback(async (googleIdToken: string) => {
+    try {
+      const res = await adminApi.loginWithGoogle(googleIdToken);
+      if (res.status === "google_account_not_found") {
+        setError(res.message ?? "This Google account is not registered. Please sign up.");
+        return;
+      }
+      if (res.status === "google_unverified") {
+        setError(res.message ?? "This Google account email is not verified.");
+        return;
+      }
+      // Existing user: TOTP challenge required. Google returns
+      // `google_verified` for users who already have 2FA enabled,
+      // and `google_login_2fa_required` for legacy accounts, so accept
+      // either.
+      if (res.status === "google_login_2fa_required" || res.status === "google_verified") {
+        // Existing user: TOTP challenge required
+        setTwoFactorStage({ kind: "verify", challengeToken: res.challengeToken ?? "" });
+        return;
+      }
+      // `mfa_enroll_required` comes with a challenge token only; the
+      // enrollment QR data is fetched separately via enroll2FAStart, so
+      // do not read secret/otpauthUrl/qrDataUrl from this response.
+      if (res.status === "mfa_enroll_required") {
+        return;
+      }
+      if (res.status === "google_account_unlinked") {
+        setError(res.message ?? "Google account could not be linked. Please try a different account.");
+        return;
+      }
+      if (res.status === "authenticated" && res.accessToken && res.refreshToken && res.user) {
+        if (!isAdminUser(res.user)) {
+          throw new Error("Access denied: only administrators may access the Admin Portal.");
+        }
+        const payload = { accessToken: res.accessToken, refreshToken: res.refreshToken, user: res.user };
+        authResponseRef.current = payload;
+        storeSession(payload.accessToken, payload.refreshToken, payload.user);
+      } else {
+        setError(res.message ?? "Google sign-in failed. Please try again.");
+      }
+    } catch (err: any) {
+      const msg = err?.message ?? "Google sign-in failed. Please try again.";
+      setError(msg);
+      console.log("[auth] admin loginWithGoogle error", { message: msg });
+      throw err;
     }
-  }, [organization]);
+  }, [storeSession]);
 
-  useEffect(() => {
-    reloadUser();
-  }, [reloadUser]);
+  const cancelTwoFactor = useCallback(() => {
+    setTwoFactorStage({ kind: "none" });
+    setError(null);
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
     setError(null);
@@ -246,22 +298,26 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
       if (res.status === "mfa_enroll_required" && res.challengeToken) {
         // Automatically request enrollment QR data
-        const enrollData = await adminApi.enroll2FAStart(res.challengeToken);
+        void adminApi.enroll2FAStart(res.challengeToken).catch(() => {});
         setTwoFactorStage({
           kind: "enroll",
           challengeToken: res.challengeToken,
-          secret: enrollData.secret,
-          otpauthUrl: enrollData.otpauthUrl,
-          qrDataUrl: enrollData.qrDataUrl,
+          // Enrollment details are fetched separately via enroll2FAStart,
+          // so these are not available on the login response.
+          secret: "",
+          otpauthUrl: "",
+          qrDataUrl: "",
         });
         return;
       }
 
       if (res.status === "authenticated" && res.accessToken && res.refreshToken && res.user) {
-        if (res.user.role !== "ADMIN") {
+        if (!isAdminUser(res.user)) {
           throw new Error("Access denied: only administrators may access the Admin Portal.");
         }
-        storeSession(res.accessToken, res.refreshToken, res.user);
+        const payload = { accessToken: res.accessToken, refreshToken: res.refreshToken, user: res.user };
+        authResponseRef.current = payload;
+        storeSession(payload.accessToken, payload.refreshToken, payload.user);
       }
     } catch (err: any) {
       const msg = err?.message ?? "Sign-in failed. Please verify your credentials.";
@@ -286,10 +342,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         hasUser: !!(res.user && res.user.role),
         userRole: res.user?.role,
       });
-      if (res.user.role !== "ADMIN") {
+      if (!isAdminUser(res.user)) {
         throw new Error("Access denied: only administrators may access the Admin Portal.");
       }
-      storeSession(res.accessToken, res.refreshToken, res.user);
+      const payload = { accessToken: res.accessToken, refreshToken: res.refreshToken, user: res.user };
+      authResponseRef.current = payload;
+      storeSession(payload.accessToken, payload.refreshToken, payload.user);
       navigate("/admin/overview", { replace: true });
     } catch (err: any) {
       const msg = err?.message ?? "Invalid verification code. Please check your authenticator.";
@@ -307,10 +365,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setIsSubmitting(true);
     try {
       const res = await adminApi.enroll2FAActivate(challengeToken, code);
-      if (res.user.role !== "ADMIN") {
+      if (!isAdminUser(res.user)) {
         throw new Error("Access denied: only administrators may access the Admin Portal.");
       }
-      storeSession(res.accessToken, res.refreshToken, res.user);
+      const payload = { accessToken: res.accessToken, refreshToken: res.refreshToken, user: res.user };
+      authResponseRef.current = payload;
+      storeSession(payload.accessToken, payload.refreshToken, payload.user);
     } catch (err: any) {
       const msg = err?.message ?? "Failed to activate two-factor authentication. Please check your code.";
       setError(msg);
@@ -320,29 +380,19 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [twoFactorStage, storeSession]);
 
-  const cancelTwoFactor = useCallback(() => {
-    setTwoFactorStage({ kind: "none" });
-    setError(null);
-  }, []);
-
-  const signOut = useCallback(async () => {
-    const rToken = refreshTokenRef.current;
-    if (rToken) {
-      try {
-        await adminApi.logout(rToken);
-      } catch {
-        // Server revocation best-effort
-      }
+  const setOrganization = useCallback((org: OrganizationProfile | null) => {
+    setOrganizationState(org);
+    if (org?.colors) {
+      applyOrganizationTheme(org.colors);
     }
-    dropSession();
-  }, [dropSession]);
+  }, []);
 
   return (
     <AdminAuthContext.Provider
       value={{
         user,
         organization,
-        isAuthenticated: !!user && user.role === "ADMIN",
+        isAuthenticated: isAdminUser(user),
         isLoading,
         twoFactorStage,
         error,
@@ -354,6 +404,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         signOut,
         reloadUser,
         setOrganization,
+        loginWithGoogle,
       }}
     >
       {children}

@@ -11,9 +11,7 @@
     "shared/app-shell",
     "server"
   ],
-  "overrides": {
-    "react-native": "0.86.3"
-  },
+  "overrides": {},
   "scripts": {
     "dev": "npm run dev:mobile",
     "dev:server": "npm run dev --workspace @signova/server",
@@ -28,5 +26,9 @@
   "devDependencies": {
     "concurrently": "^10.0.5",
     "playwright": "^1.64.1"
+  },
+  "dependencies": {
+    "@types/react": "~19.3.0",
+    "react-native-fast-tflite": "^3.0.1"
   }
 }

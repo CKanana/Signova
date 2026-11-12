@@ -12,19 +12,33 @@ import { UnauthorizedError, BadRequestError, ConflictError, NotFoundError } from
 import { config } from "../config/env.js";
 import { assertPasswordPolicy } from "../utils/passwordPolicy.js";
 import type { Request } from "express";
-import type { Types } from "mongoose";
+import type { Types, Document } from "mongoose";
+import type { Role } from "../../../shared/types/translation.js";
 
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
 const REFRESH_TTL_DAYS = 7;
 
+/** Current step in the Signova login flow. */
+export type LoginStep =
+  | { kind: "credentials" }
+  | { kind: "login_with_google"; googleIdToken: string }
+  | { kind: "otp"; challengeToken: string }
+  | { kind: "enrollment"; challengeToken: string; enrollment: { secret: string; otpauthUrl: string; qrDataUrl: string } }
+  | { kind: "pending_approval" };
+
 export interface AuthResult {
-  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval" | "setup_required";
+  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval" | "setup_required" | "google_verified" | "google_account_not_found" | "google_unverified" | "google_duplicate" | "google_ambiguous";
   challengeToken?: string;
   accessToken?: string;
   refreshToken?: string;
   user?: PublicUser;
   message?: string;
+  requestId?: string;
+  /** The Google ID token used for account matching. Never returned to the client. */
+  _internal?: {
+    requestId?: string;
+  };
 }
 
 export interface PublicUser {
@@ -115,6 +129,106 @@ export async function login(email: string, password: string, req: Request): Prom
   const challengeToken = signChallengeToken(user._id.toString(), "mfa_enroll");
   await recordAudit({ action: "LOGIN", actor: user._id, organization: user.organization, req });
   return { status: "mfa_enroll_required", challengeToken };
+}
+
+/** Step 1b — Google sign-in. Verifies the ID token, matches the account, and returns the next step. */
+export async function loginWithGoogle(googleIdToken: string, req: Request): Promise<AuthResult> {
+  // Internal request id for tracing cross-service flows.
+  const requestId = randomToken(16);
+
+  // 1. Verify the Google ID token using Google's official verification
+  //    (signature, issuer, audience, expiry, email_verified).
+  const googleAuth = await import("../services/googleAuth.js");
+  const verified = await googleAuth.verifyGoogleIdToken(googleIdToken);
+
+  // 2a. Match the verified Google `sub` to an existing provisioned Signova account.
+  let user = await User.findOne({ googleSub: verified.userId })
+    .select("+googleSub +passwordHash +failedLoginCount +lockedUntil +twoFactorEnabled +isActive");
+
+  // 2b. If no `googleSub` match, attempt email-based auto-linking on first
+  //     Google login. We only link when:
+  //       - Google has verified the email address (email_verified = true)
+  //       - A matching active Signova account exists with that email
+  //       - The account does not already have a different googleSub
+  //     On success we write the googleSub so future logins skip this step.
+  if (!user && verified.emailVerified && verified.email) {
+    const emailMatch = await User.findOne({
+      email: verified.email.toLowerCase(),
+      role: { $in: ["STAFF", "ADMIN"] },
+    }).select("+googleSub +passwordHash +failedLoginCount +lockedUntil +twoFactorEnabled +isActive");
+
+    if (emailMatch && !emailMatch.googleSub) {
+      // Link this Google account to the existing user. Atomic update so
+      // two concurrent first-time Google logins cannot both succeed.
+      const linked = await User.findOneAndUpdate(
+        { _id: emailMatch._id, googleSub: { $exists: false } },
+        { $set: { googleSub: verified.userId } },
+        { new: true }
+      ).select("+googleSub +passwordHash +failedLoginCount +lockedUntil +twoFactorEnabled +isActive");
+
+      if (linked) {
+        user = linked;
+        await recordAudit({
+          action: "GOOGLE_ACCOUNT_LINKED",
+          actor: linked._id,
+          organization: linked.organization,
+          meta: { email: verified.email, googleSub: verified.userId },
+          req,
+        });
+      }
+    }
+  }
+
+  if (!user) {
+    await recordAudit({
+      action: "LOGIN_FAILED",
+      target: verified.userId,
+      meta: { email: verified.email, emailVerified: verified.emailVerified, reason: "no_matching_account" },
+      req,
+    });
+    return {
+      status: "google_account_not_found",
+      message: "No Signova account found for this Google address. Sign in with your email and password first, then Google Sign-In will link automatically next time.",
+      requestId,
+      _internal: { requestId },
+    };
+  }
+
+  // 3. Re-validate account state.
+  if (!user.isActive) {
+    await recordAudit({ action: "LOGIN_FAILED", target: user._id.toString(), req, meta: { email: verified.email, reason: "inactive" } });
+    return {
+      status: "google_unverified",
+      message: "This Signova account is inactive. Contact your administrator.",
+      requestId,
+      _internal: { requestId },
+    };
+  }
+
+  // 4. Issue a TOTP challenge. New accounts (no 2FA) go through enrollment;
+  //    existing users receive the TOTP challenge step.
+  if (!user.twoFactorEnabled) {
+    const challengeToken = signChallengeToken(user._id.toString(), "mfa_enroll");
+    await recordAudit({ action: "GOOGLE_LOGIN", actor: user._id, organization: user.organization, req });
+    return {
+      status: "mfa_enroll_required",
+      challengeToken,
+      user: toPublicUser(user),
+      requestId,
+      _internal: { requestId },
+    };
+  }
+
+  const challengeToken = signChallengeToken(user._id.toString(), "2fa");
+  await recordAudit({ action: "GOOGLE_LOGIN", actor: user._id, organization: user.organization, req });
+
+  return {
+    status: "google_verified",
+    challengeToken,
+    user: toPublicUser(user),
+    requestId,
+    _internal: { requestId },
+  };
 }
 
 /** Step 2a — verify a TOTP code during a normal 2FA login. */

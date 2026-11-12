@@ -1,0 +1,56 @@
+pluginManagement {
+  def reactNativeGradlePlugin = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
+    }.standardOutput.asText.get().trim()
+  ).getParentFile().absolutePath
+  includeBuild(reactNativeGradlePlugin)
+  
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    "../android/expo-gradle-plugin"
+  ).absolutePath
+  includeBuild(expoPluginsPath)
+
+  def expoModuleGradlePluginPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-core/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim()
+  ).getParentFile().toPath().resolve("expo-module-gradle-plugin").toFile().absolutePath
+  includeBuild(expoModuleGradlePluginPath)
+}
+
+plugins {
+  id("com.facebook.react.settings")
+  id("expo-autolinking-settings")
+}
+
+// The pre-downloaded MediaPipe .aar files live in apps/mobile-deaf-user/libs/.
+// Each subproject declares its own repository:
+//   - expo-hand-landmarker/android/build.gradle has a rootProject.repositories { flatDir { dirs ... } }
+//   - app/build.gradle references the .aar files as artifact dependencies.
+
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
+    ex.autolinkLibrariesFromCommand()
+  } else {
+    ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
+  }
+}
+expoAutolinking.useExpoModules()
+
+rootProject.name = 'Signova'
+
+expoAutolinking.useExpoVersionCatalog()
+
+include ':app'
+include(':expo-hand-landmarker')
+project(':expo-hand-landmarker').projectDir = file('../modules/expo-hand-landmarker/android')
+include(':expo-modules-core')
+project(':expo-modules-core').projectDir = file('../node_modules/expo-modules-core/android')
+includeBuild(expoAutolinking.reactNativeGradlePlugin)

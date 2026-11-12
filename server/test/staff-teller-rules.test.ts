@@ -220,7 +220,8 @@ test("staff: cannot call /api/admin routes (denied)", async () => {
   check("admin: GET /staff denied (401 for non-admin)", r3.status === 401, "got " + r3.status);
 });
 
-// ===== (d) staff CAN change another teller's availability (real finding) =====
+// ===== (d) staff may change another teller's availability (real finding:
+//      route lacks role + org scoping) =====
 
 test("staff: another teller availability change NOT denied (permission gap)", async () => {
   const thisEmail = "home.staff.d." + uuidv4() + "@signova.test";

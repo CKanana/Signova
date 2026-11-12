@@ -12,20 +12,13 @@ import {
   type WireMessage,
 } from "./events";
 
-/**
- * Socket.IO client for the staff dashboard's realtime layer.
- *
- * Reuses the Phase 1 infrastructure exactly: the /signova namespace, the
- * Bearer-token handshake, the org teller room (staff sockets auto-join it
- * in the gateway), and the session:join / message:send / session:end
- * events. There is no second realtime implementation — this module is the
- * only place the dashboard touches the socket.
- *
- * Connection states surfaced to the UI: connecting → connected, and on
- * failure reconnect → reconnecting → disconnected. Socket.IO handles
- * reconnection automatically; we mirror its state for the status pill.
- */
+/** Server → staff socket event names (ack/reject of a send). */
+export const S2C_FROM_SENDER = {
+  MESSAGE_ACKED: "message:acked",
+  MESSAGE_REJECTED: "message:rejected",
+} as const;
 
+/** Connection states surfaced to the UI. */
 export type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "disconnected";
 
 export interface StaffSocketHandlers {
@@ -37,6 +30,58 @@ export interface StaffSocketHandlers {
   onError?: (message: string) => void;
   onConnectionChange?: (state: ConnectionState) => void;
 }
+
+/** Sending state of a pending staff message. Not complete until the server confirms. */
+export interface PendingSend {
+  id: string;
+  /** The server's echoed messagePayload in the ack. */
+  ackPayload: Record<string, unknown>;
+  /** Resolve once the server confirms the message won't be rejected. */
+  resolve: (payload: unknown) => void;
+  /** Reject if the server rejects the send (normal path is resolve only). */
+  reject: (error: Error) => void;
+}
+
+/**
+ * In-memory store of sends awaiting server confirmation.
+ *
+ * A staff socket is in the session room, so the server's broadcast of
+ * `message:new` to that room is a confirmation for the staff sender. But
+ * broadcasting to the room is order-dependent with `message:send` handling,
+ * and can be lost across reconnect. This store + the direct `message:acked`
+ * path (emitted to the sender socket immediately after persisting) is the
+ * reliable resolution mechanism.
+ */
+class PendingSendStore {
+  private readonly awaiting = new Map<string, PendingSend>();
+
+  add(send: PendingSend): string {
+    const id = send.id ?? crypto.randomUUID();
+    this.awaiting.set(id, send);
+    return id;
+  }
+
+  complete(id: string, payload: Record<string, unknown>): Record<string, unknown> | null {
+    const send = this.awaiting.get(id);
+    if (!send) return null;
+    this.awaiting.delete(id);
+    send.resolve(payload);
+    return payload;
+  }
+
+  reject(id: string, error: Error): void {
+    const send = this.awaiting.get(id);
+    if (!send) return;
+    this.awaiting.delete(id);
+    send.reject(error);
+  }
+
+  drop(id: string): void {
+    this.awaiting.delete(id);
+  }
+}
+
+export const pendingSendStore = new PendingSendStore();
 
 let socket: Socket | null = null;
 let state: ConnectionState = "idle";
@@ -52,11 +97,7 @@ function setState(next: ConnectionState, handlers: StaffSocketHandlers): void {
   handlers.onConnectionChange?.(next);
 }
 
-/**
- * Connect (or reuse) the staff socket with the staff access token.
- * The gateway verifies the token, and staff sockets automatically join
- * `org:<orgId>:tellers` where session:request arrives.
- */
+/** Connect (or reuse) the staff socket with the staff access token. */
 export function connectStaffSocket(token: string, handlers: StaffSocketHandlers = {}): Socket {
   if (socket && connectedToken === token && (socket.connected || state === "connecting")) {
     return socket;
@@ -117,12 +158,71 @@ export function leaveSession(sessionId: string): void {
 }
 
 /**
- * Send a staff reply over the socket. The server derives the sender from
- * the token's role (STAFF), persists once, and broadcasts staff:message to
- * the session room — where the Deaf-user mobile client is listening. The
- * staff member's own socket (in the session room) receives the broadcast
- * back as message:new, which is the send confirmation.
+ * Send a staff reply over the socket, resolving when the server confirms the
+ * message. The server derives the sender from the token's role (STAFF),
+ * persists once, and (a) broadcasts message:new to the session room (which
+ * the staff socket receives for its own message) and (b) emits a direct
+ * message:acked to the sender socket. The Promise resolves on the direct ack,
+ * which is order-independent and survives reconnect.
+ *
+ * @returns Promise that resolves with the server's echoed payload, or rejects
+ *          on a socket-side error. Callers must await this for the send to be
+ *          considered complete.
  */
+export function sendStaffMessageAsync(
+  sessionId: string,
+  text: string,
+  method: "speech" | "text" = "speech",
+): Promise<void> {
+  if (!socket || !socket.connected) {
+    return Promise.reject(new Error("Not connected to the service."));
+  }
+  return new Promise<void>((resolve, reject) => {
+    const ackPayload = { sessionId, text, method, timestamp: new Date().toISOString() };
+    const send: PendingSend = {
+      id: `send-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      ackPayload,
+      resolve,
+      reject,
+    };
+    const id = pendingSendStore.add(send);
+
+    // Resolve on server's direct ack (order-independent, survives reconnect).
+    const onAcked = (ack: Record<string, unknown>) => {
+      cleanup();
+      pendingSendStore.drop(id);
+      resolve(ack);
+    };
+    socket.on(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
+    // Also resolve via message:new in the session room (the staff socket's
+    // own broadcast). Used as a fallback and as the confirmation for the
+    // legacy fire-and-forget path.
+    const onNewMessage = (m: WireMessage) => {
+      if (m.sessionId === sessionId && m.sender === "STAFF" && m.text === text && m.method === method) {
+        cleanup();
+        pendingSendStore.drop(id);
+        resolve(m);
+      }
+    };
+    socket.on(S2C_STAFF.MESSAGE_NEW, onNewMessage);
+
+    // Clean up callbacks once resolved.
+    const cleanup = () => {
+      socket.off(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
+      socket.off(S2C_STAFF.MESSAGE_NEW, onNewMessage);
+    };
+
+    try {
+      socket.emit(C2S.MESSAGE_SEND, { sessionId, text, method });
+    } catch (err) {
+      cleanup();
+      pendingSendStore.drop(id);
+      reject(err instanceof Error ? err : new Error("The server rejected this message."));
+    }
+  });
+}
+
+/** Send a staff reply (fire-and-forget, preserving the original API). */
 export function sendStaffMessage(
   sessionId: string,
   text: string,

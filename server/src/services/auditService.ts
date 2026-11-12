@@ -5,6 +5,8 @@ export type AuditAction =
   | "LOGIN"
   | "LOGIN_FAILED"
   | "LOGOUT"
+  | "GOOGLE_LOGIN"
+  | "GOOGLE_ACCOUNT_LINKED"
   | "OTP_VERIFY"
   | "OTP_VERIFY_FAILED"
   | "PASSWORD_CHANGE"
@@ -52,7 +54,8 @@ export type AuditAction =
   | "BOOTSTRAP_ACCEPT_WEAK_PASSWORD"
   | "BOOTSTRAP_ACCEPTED"
   | "BOOTSTRAP_ACTIVATED"
-  | "BOOTSTRAP_SETUP_EMAIL_SENT";
+  | "BOOTSTRAP_SETUP_EMAIL_SENT"
+  | "GOOGLE_LOGIN";
 
 interface AuditInput {
   action: AuditAction;

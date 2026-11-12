@@ -131,9 +131,9 @@ export const liveSigningStyles = StyleSheet.create({
   },
   cameraViewport: {
     width: "100%",
-    aspectRatio: 16 / 10,
-    minHeight: 220,
-    maxHeight: 360,
+    aspectRatio: 4 / 3,
+    minHeight: 280,
+    maxHeight: 480,
     overflow: "hidden",
     position: "relative",
     borderRadius: 16,
@@ -142,7 +142,7 @@ export const liveSigningStyles = StyleSheet.create({
   cameraViewportTablet: {
     flex: 1,
     minHeight: 0,
-    maxHeight: 460,
+    maxHeight: 560,
     aspectRatio: undefined,
   },
   cameraFeed: {

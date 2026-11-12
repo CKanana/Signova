@@ -13,6 +13,7 @@ import {
   registerStaff,
   requestPasswordReset,
   resetPassword,
+  loginWithGoogle,
 } from "../services/authService.js";
 import { assertPasswordPolicy } from "../utils/passwordPolicy.js";
 
@@ -57,7 +58,56 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
 });
 
-const resetPasswordSchema = z.object({
+/**
+ * Login with Google.
+ *
+ * Accepts two payload shapes and refuses any shape that lacks verifiable
+ * identity information:
+ *
+ *   1. Server-side verification shape:  { googleIdToken }
+ *      The frontend obtains a Google ID token (via Google Identity
+ *      Services credential response or an OAuth 2.0 `code` exchange) and
+ *      submits it here. This is THE only shape the server accepts for
+ *      account matching — the verified `sub` claim from the token is what
+ *      is matched against the provisioned `googleSub` field.
+ *
+ *   2. Authorization-response shape (Google Identity Services):
+ *      { code, state }
+ *      The OAuth 2.0 authorization response contains `code` + `state`. The
+ *      frontend must exchange `code` for tokens server-side before calling
+ *      this endpoint. The server never trusts `code` alone for identity.
+ *
+ * Any other shape returns 400 with a clear message.
+ */
+const loginWithGoogleSchema = z
+  .object({
+    // Primary shape: server-side verified Google ID token.
+    googleIdToken: z.string().optional(),
+    // Alternative shape (Google Identity Services): the OAuth 2.0
+    // authorization response contains `code` + `state`; the frontend must
+    // exchange `code` for an ID token server-side before calling this
+    // endpoint. The server never trusts `code` alone for identity.
+    code: z.string().optional(),
+    state: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasToken =
+      data.googleIdToken != null && data.googleIdToken.trim().length > 0;
+    const hasCode = data.code != null && data.code.trim().length > 0;
+    const hasState = data.state != null && data.state.trim().length > 0;
+    if (hasToken) return;
+    if (hasCode && hasState) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "Provide either `googleIdToken` (ID token) or both `code` + `state` (authorization response).",
+      path: ["googleIdToken", "code", "state"],
+    });
+  });
+
+export { loginWithGoogleSchema };
+
+export const resetPasswordSchema = z.object({
   token: z.string().min(1, "Reset token is required"),
   password: z.string().min(10, "Password must be at least 10 characters"),
   passwordConfirmation: z.string(),
@@ -70,6 +120,18 @@ export const loginHandler = [
   validate({ body: loginSchema }),
   async (req: Request, res: Response) => {
     const result = await login(req.body.email, req.body.password, req);
+    res.json(result);
+  },
+];
+
+export const loginWithGoogleHandler = [
+  async (req: Request, res: Response) => {
+    const token = req.body.googleIdToken;
+    if (!token || typeof token !== "string" || !token.trim()) {
+      res.status(400).json({ error: { code: "MISSING_ID_TOKEN", message: "Missing Google ID token." } });
+      return;
+    }
+    const result = await loginWithGoogle(token.trim(), req);
     res.json(result);
   },
 ];
@@ -159,7 +221,12 @@ export const forgotPasswordHandler = [
 export const rejectPublicRegistrationHandler = [
   validate({ body: z.object({}) }),
   async (_req: Request, res: Response) => {
-    res.status(403).json({ error: { code: "PUBLIC_REGISTRATION_DISABLED", message: "Public registration is disabled. Contact an administrator for an invitation." } });
+    res.status(403).json({
+      error: {
+        code: "PUBLIC_REGISTRATION_DISABLED",
+        message: "Public registration is disabled. Contact an administrator for an invitation.",
+      },
+    });
   },
 ];
 

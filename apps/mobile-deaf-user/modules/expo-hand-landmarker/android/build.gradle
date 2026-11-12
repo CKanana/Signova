@@ -1,0 +1,23 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.handlandmarker'
+version = '1.0.0'
+
+android {
+    compileSdkVersion 37
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 37
+    }
+    namespace "expo.modules.handlandmarker"
+}
+
+dependencies {
+    implementation project(':expo-modules-core')
+
+    // MediaPipe Tasks Vision — hand landmarker (resolved via Google Maven).
+    // tasks-core:0.10.21 comes transitively from tasks-vision's POM.
+    implementation("com.google.mediapipe:tasks-vision:0.10.21")
+}

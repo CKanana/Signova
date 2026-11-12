@@ -1,0 +1,14 @@
+{
+  "name": "expo-hand-landmarker",
+  "version": "1.0.0",
+  "description": "Expo module wrapping MediaPipe HandLandmarker for Signova sign recognition.",
+  "main": "src/index.ts",
+  "files": [
+    "src",
+    "android"
+  ],
+  "peerDependencies": {
+    "expo": "*",
+    "expo-modules-core": "*"
+  }
+}

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Auth Bridge</title>
+</head>
+<body>
+  <script>
+    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YWQ4YzIxYTQwMzRmM2U3OTNmZDQ2MTUiLCJvcmdJZCI6IjZhZDhjMjE5NDAzNGYzZTc5M2ZkNDYxMyIsInJvbGUiOiJBRE1JTiIsInNjb3BlIjoiZnVsbCIsImlhdCI6MTc5MjU5MDM2OSwiZXhwIjoxNzkyNTkxMjY5fQ.8zg0xAVfgCMabdykXVJpSeB3OcblIIo4SOI2FQLwNVs";
+    const refresh = "5b8ebf1242c5c90a8a6291e6cde84a652fa79871db7d98d134560154bd26475876ee821544178b0d0acbd17d8c621b4b";
+    const user = {"id":"6ad8c21a4034f3e793fd4615","organization":"6ad8c2194034f3e793fd4613","role":"ADMIN","name":"Signova Admin","email":"admin@signova.test","twoFactorEnabled":true,"isActive":true};
+
+    sessionStorage.setItem("signova.admin.accessToken", token);
+    sessionStorage.setItem("signova.admin.refreshToken", refresh);
+    sessionStorage.setItem("signova.admin.user", JSON.stringify(user));
+
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get("to") || "/admin/overview";
+    window.location.replace(target);
+  </script>
+</body>
+</html>

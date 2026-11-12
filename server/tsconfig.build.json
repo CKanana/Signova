@@ -11,13 +11,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "rootDir": "src",
+    "rootDir": "..",
     "outDir": "dist",
     "declaration": false,
     "sourceMap": false,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "shared/**/*.ts"],
   "exclude": ["node_modules", "dist", "test"]
 }

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginHandler, verifyTwoFactorHandler, enrollStartHandler, enrollActivateHandler, logoutHandler, refreshHandler, meHandler } from "../controllers/authController.js";
+import { loginHandler, verifyTwoFactorHandler, enrollStartHandler, enrollActivateHandler, logoutHandler, refreshHandler, meHandler, loginWithGoogleHandler, loginWithGoogleSchema } from "../controllers/authController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
@@ -10,6 +10,7 @@ export const adminAuthRouter = Router();
 
 // Authentication endpoints (reuse the existing staff auth controller).
 adminAuthRouter.post("/login", loginHandler);
+adminAuthRouter.post("/login-with-google", validate({ body: loginWithGoogleSchema }), loginWithGoogleHandler);
 adminAuthRouter.post("/2fa/verify", verifyTwoFactorHandler);
 adminAuthRouter.post("/2fa/enroll/start", enrollStartHandler);
 adminAuthRouter.post("/2fa/enroll/activate", enrollActivateHandler);

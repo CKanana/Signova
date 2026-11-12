@@ -7,14 +7,14 @@ export const tabletHeaderStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: theme.colors.surface,
-    borderBottomWidth: 1.5,
+    borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 10,
-    minHeight: 64,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    minHeight: 72,
   },
   navSlot: {
-    width: 52,
+    width: 56,
     alignItems: "flex-start",
   },
   iconPlaceholder: {
@@ -25,16 +25,16 @@ export const tabletHeaderStyles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
   orgTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
     color: theme.colors.text,
     textAlign: "center",
   },
   orgTitleLarge: {
-    fontSize: 21,
+    fontSize: 24,
   },
   poweredBy: {
     fontSize: 12,
@@ -50,7 +50,7 @@ export const tabletHeaderStyles = StyleSheet.create({
   actionsSlot: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
   iconBtn: {
     width: 48,
@@ -58,15 +58,17 @@ export const tabletHeaderStyles = StyleSheet.create({
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F6F2E8",
+    backgroundColor: "rgba(91,42,134,0.06)",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   iconBtnActive: {
-    backgroundColor: "#EDE4F7",
+    backgroundColor: "rgba(91,42,134,0.12)",
     borderWidth: 1.5,
-    borderColor: theme.colors.primary,
+    borderColor: "rgba(91,42,134,0.35)",
   },
   pressed: {
-    opacity: 0.75,
+    opacity: 0.7,
     transform: [{ scale: 0.95 }],
   },
 });

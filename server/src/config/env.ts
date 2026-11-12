@@ -58,34 +58,74 @@ const envSchema = z.object({
   // Reset-token lifetime in minutes (target: 15).
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(15),
 
+  // ---- Google OAuth (OpenID Connect) credentials ----
+  // Never expose these in frontend code. Configure via the Google Cloud
+  // Console: IAM & Admin → Credentials → OAuth 2.0 Client IDs. The
+  // redirect URI for the web apps is the value of APP_PUBLIC_BASE_URL.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+
   // Single-source bootstrap setup token TTL.
   BOOTSTRAP_SETUP_TOKEN_TTL_MS: z.number().int().positive().default(10 * 60 * 1000),
 });
 
-function _isAbsoluteUrl(value: string): boolean {
-  try {
-    const u = new URL(value);
-    return typeof u.hostname === "string" && u.hostname.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function _loadEnv() {
+/** Schema to validate the current process env vars. Reads process.env at
+ * call time so tests that mutate process.env before importing config can
+ * still pick up the correct values (the config object is cached, so this
+ * returns a fresh validation on each call). */
+function loadEnvFromProcessEnv(): z.infer<typeof envSchema> {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
-    // eslint-disable-next-line no-console
-    console.error(`Invalid environment configuration:\n${issues}`);
-    process.exit(1);
+    throw new Error(`Invalid environment configuration:\n${issues}`);
   }
+  return parsed.data as z.infer<typeof envSchema>;
+}
 
-  const raw = parsed.data as z.infer<typeof envSchema>;
+// Re-validate and re-derive the config on every access. Env vars may have
+// changed since the last access (e.g. a test set process.env before importing
+// config). This is slightly more costly than a plain cached object but keeps
+// test and production behaviour correct.
+function getConfig(): {
+  env: string;
+  isProduction: boolean;
+  port: number;
+  corsOrigins: string[];
+  mongodbUri: string;
+  jwt: {
+    accessSecret: string;
+    accessTtl: string;
+    refreshSecret: string;
+    refreshTtl: string;
+    challengeSecret: string;
+    challengeTtl: string;
+  };
+  totpEncryptionKey: string;
+  appName: string;
+  lowConfidenceThreshold: number;
+  orgId: string | undefined;
+  smtp: {
+    host: string;
+    port: number;
+    user: string | undefined;
+    appPassword: string | undefined;
+  };
+  adminPortalUrl: string;
+  passwordResetBaseUrl: string;
+  appPublicBaseUrl: string;
+  passwordResetTtlMinutes: number;
+  BOOTSTRAP_SETUP_TOKEN_TTL_MS: number;
+  google: {
+    clientId: string | undefined;
+    clientSecret: string | undefined;
+  };
+} {
+  const raw = loadEnvFromProcessEnv();
 
   // --- Absolute-URL validation (explicitly constructed, not concatenated) ---
-  const urlKeys: (keyof typeof raw)[] = ["APP_PUBLIC_BASE_URL", "ADMIN_PORTAL_URL"];
+  const urlKeys = ["APP_PUBLIC_BASE_URL", "ADMIN_PORTAL_URL"] as const;
   const problems: string[] = [];
   for (const key of urlKeys) {
     const value = raw[key];
@@ -98,9 +138,7 @@ function _loadEnv() {
     }
   }
   if (problems.length) {
-    // eslint-disable-next-line no-console
-    console.error("[config] Invalid base URL configuration:\n  - " + problems.join("\n  - "));
-    process.exit(1);
+    throw new Error("[config] Invalid base URL configuration:\n  - " + problems.join("\n  - "));
   }
 
   // --- Production: https required for every emailed-link base URL ---
@@ -109,13 +147,9 @@ function _loadEnv() {
       try {
         const u = new URL(String(raw[key]));
         if (u.protocol !== "https:") {
-          // eslint-disable-next-line no-console
-          console.error(
-            `[config] ${key} must use https: in production (got ${u.protocol})`,
-          );
-          process.exit(1);
+          throw new Error(`[config] ${key} must use https: in production (got ${u.protocol})`);
         }
-      } catch (err) {
+      } catch {
         // _isAbsoluteUrl already returned false above
       }
     }
@@ -126,7 +160,6 @@ function _loadEnv() {
     try {
       const staff = new URL(String(raw.APP_PUBLIC_BASE_URL));
       if (staff.hostname === "localhost") {
-        // eslint-disable-next-line no-console
         console.warn(
           `[config] APP_PUBLIC_BASE_URL is http://localhost:${staff.port || 80} in development — confirm it points at the Staff app.`,
         );
@@ -137,7 +170,6 @@ function _loadEnv() {
     try {
       const admin = new URL(String(raw.ADMIN_PORTAL_URL));
       if (admin.hostname === "localhost") {
-        // eslint-disable-next-line no-console
         console.warn(
           `[config] ADMIN_PORTAL_URL is http://localhost:${admin.port || 80} in development — confirm it points at the Admin portal.`,
         );
@@ -147,41 +179,96 @@ function _loadEnv() {
     }
   }
 
-  return raw;
+  return {
+    env: raw.NODE_ENV,
+    isProduction: raw.NODE_ENV === "production",
+    port: raw.PORT,
+    corsOrigins: raw.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
+    mongodbUri: raw.MONGODB_URI,
+    jwt: {
+      accessSecret: raw.ACCESS_TOKEN_SECRET,
+      accessTtl: raw.ACCESS_TOKEN_TTL,
+      refreshSecret: raw.REFRESH_TOKEN_SECRET,
+      refreshTtl: raw.REFRESH_TOKEN_TTL,
+      challengeSecret: raw.CHALLENGE_TOKEN_SECRET,
+      challengeTtl: raw.CHALLENGE_TOKEN_TTL,
+    },
+    totpEncryptionKey: raw.TOTP_ENCRYPTION_KEY,
+    appName: raw.APP_NAME,
+    lowConfidenceThreshold: raw.TRANSLATION_LOW_CONFIDENCE,
+    orgId: raw.SIGNOVA_ORG_ID,
+    smtp: {
+      host: raw.SMTP_HOST.trim(),
+      port: raw.SMTP_PORT,
+      user: raw.SMTP_USER?.trim(),
+      appPassword: raw.SMTP_APP_PASSWORD ? raw.SMTP_APP_PASSWORD.replace(/\s+/g, "") : undefined,
+    },
+    adminPortalUrl: raw.ADMIN_PORTAL_URL.trim().replace(/\/+$/, ""),
+    passwordResetBaseUrl: raw.PASSWORD_RESET_BASE_URL.trim().replace(/\/+$/, ""),
+    appPublicBaseUrl: raw.APP_PUBLIC_BASE_URL.trim().replace(/\/+$/, ""),
+    passwordResetTtlMinutes: raw.PASSWORD_RESET_TTL_MINUTES,
+    BOOTSTRAP_SETUP_TOKEN_TTL_MS: raw.BOOTSTRAP_SETUP_TOKEN_TTL_MS,
+    google: {
+      clientId: raw.GOOGLE_CLIENT_ID,
+      clientSecret: raw.GOOGLE_CLIENT_SECRET,
+    },
+  };
 }
 
-const env = _loadEnv();
+function _isAbsoluteUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return typeof u.hostname === "string" && u.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
 
+// Type aliases for the config getters
+type JwtConfig = {
+  accessSecret: string;
+  accessTtl: string;
+  refreshSecret: string;
+  refreshTtl: string;
+  challengeSecret: string;
+  challengeTtl: string;
+};
+
+type SmtpConfig = {
+  host: string;
+  port: number;
+  user: string | undefined;
+  appPassword: string | undefined;
+};
+
+type GoogleConfig = {
+  clientId: string | undefined;
+  clientSecret: string | undefined;
+};
+
+// Module-level config object. Each getter re-reads env vars from process.env
+// at call time via getConfig(), so tests that mutate process.env before
+// importing config can still pick up the correct values. This avoids the
+// module-load-time caching that broke tests earlier.
 export const config = {
-  env: env.NODE_ENV,
-  isProduction: env.NODE_ENV === "production",
-  port: env.PORT,
-  corsOrigins: env.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
-  mongodbUri: env.MONGODB_URI,
-  jwt: {
-    accessSecret: env.ACCESS_TOKEN_SECRET,
-    accessTtl: env.ACCESS_TOKEN_TTL,
-    refreshSecret: env.REFRESH_TOKEN_SECRET,
-    refreshTtl: env.REFRESH_TOKEN_TTL,
-    challengeSecret: env.CHALLENGE_TOKEN_SECRET,
-    challengeTtl: env.CHALLENGE_TOKEN_TTL,
-  },
-  totpEncryptionKey: env.TOTP_ENCRYPTION_KEY,
-  appName: env.APP_NAME,
-  lowConfidenceThreshold: env.TRANSLATION_LOW_CONFIDENCE,
-  orgId: env.SIGNOVA_ORG_ID,
-  smtp: {
-    host: env.SMTP_HOST.trim(),
-    port: env.SMTP_PORT,
-    user: env.SMTP_USER?.trim(),
-    appPassword: env.SMTP_APP_PASSWORD ? env.SMTP_APP_PASSWORD.replace(/\s+/g, "") : undefined,
-  },
-  adminPortalUrl: env.ADMIN_PORTAL_URL.trim().replace(/\/+$/, ""),
-  passwordResetBaseUrl: env.PASSWORD_RESET_BASE_URL.trim().replace(/\/+$/, ""),
-  appPublicBaseUrl: env.APP_PUBLIC_BASE_URL.trim().replace(/\/+$/, ""),
-  passwordResetTtlMinutes: env.PASSWORD_RESET_TTL_MINUTES,
-  BOOTSTRAP_SETUP_TOKEN_TTL_MS: env.BOOTSTRAP_SETUP_TOKEN_TTL_MS,
-} as const;
+  get env(): string { return getConfig().env; },
+  get isProduction(): boolean { return getConfig().isProduction; },
+  get port(): number { return getConfig().port; },
+  get corsOrigins(): string[] { return getConfig().corsOrigins; },
+  get mongodbUri(): string { return getConfig().mongodbUri; },
+  get jwt(): JwtConfig { return getConfig().jwt; },
+  get totpEncryptionKey(): string { return getConfig().totpEncryptionKey; },
+  get appName(): string { return getConfig().appName; },
+  get lowConfidenceThreshold(): number { return getConfig().lowConfidenceThreshold; },
+  get orgId(): string | undefined { return getConfig().orgId; },
+  get smtp(): SmtpConfig { return getConfig().smtp; },
+  get adminPortalUrl(): string { return getConfig().adminPortalUrl; },
+  get passwordResetBaseUrl(): string { return getConfig().passwordResetBaseUrl; },
+  get appPublicBaseUrl(): string { return getConfig().appPublicBaseUrl; },
+  get passwordResetTtlMinutes(): number { return getConfig().passwordResetTtlMinutes; },
+  get BOOTSTRAP_SETUP_TOKEN_TTL_MS(): number { return getConfig().BOOTSTRAP_SETUP_TOKEN_TTL_MS; },
+  get google(): GoogleConfig { return getConfig().google; },
+};
 
 // Single-source bootstrap setup token TTL, exported for scripts and services.
 export const BOOTSTRAP_SETUP_TOKEN_TTL_MS = config.BOOTSTRAP_SETUP_TOKEN_TTL_MS;

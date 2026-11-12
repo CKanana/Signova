@@ -1,0 +1,27 @@
+import { z } from "zod";
+import { acceptInvitation } from "../services/invitationService.js";
+import { activateTwoFactorEnrollment } from "../../services/authService.js";
+import { validatePasswordPolicy } from "../../utils/passwordPolicy.js";
+const acceptSchema = z.object({
+    token: z.string().min(1, "Setup token is required"),
+    password: z.string().min(12, "Password must be at least 12 characters"),
+});
+export async function acceptStaffSetupHandler(req, res) {
+    const body = acceptSchema.parse(req.body);
+    const passwordErrors = validatePasswordPolicy(body.password).reasons;
+    if (passwordErrors.length > 0) {
+        res.status(400).json({ error: { code: "VALIDATION_ERROR", message: passwordErrors[0], details: passwordErrors } });
+        return;
+    }
+    const result = await acceptInvitation(body.token, body.password, req);
+    res.status(200).json(result);
+}
+const activateSchema = z.object({
+    challengeToken: z.string(),
+    code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export async function activateStaffSetupHandler(req, res) {
+    const body = activateSchema.parse(req.body);
+    const result = await activateTwoFactorEnrollment(body.challengeToken, body.code, req);
+    res.status(200).json(result);
+}

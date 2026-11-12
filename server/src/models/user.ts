@@ -11,6 +11,8 @@ export interface IUser {
   phone?: string;
   avatar?: string;
   passwordHash?: string;
+  /** The Google `sub` claim for a Google-authenticated account. Set by the server after a successful Google ID-token verification; never set by the frontend. */
+  googleSub?: string;
   totpSecret?: string; // AES-256-GCM encrypted at rest
   /**
    * The absolute TOTP time-step of the last accepted code. A code whose
@@ -37,6 +39,7 @@ const userSchema = new Schema<IUser>(
     phone: { type: String, trim: true },
     avatar: { type: String },
     passwordHash: { type: String, select: false },
+    googleSub: { type: String, sparse: true, index: true },
     totpSecret: { type: String, select: false },
     totpLastUsedStep: { type: Number, select: false },
     twoFactorEnabled: { type: Boolean, default: false },

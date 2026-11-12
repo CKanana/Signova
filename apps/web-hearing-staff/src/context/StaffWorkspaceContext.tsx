@@ -16,11 +16,12 @@ import {
   endSession as socketEndSession,
   getConnectionState,
   joinSession,
-  sendStaffMessage,
+  sendStaffMessageAsync,
   type ConnectionState,
 } from "../services/socket";
 import type { SessionRequestPayload, WireMessage } from "../services/events";
 import type { MessageRecord, Organisation } from "../../../../shared/types/mobile";
+
 /**
  * Staff workspace state: organization, tellers, the assigned teller, the
  * incoming request queue, the active session, its conversation, and the
@@ -91,6 +92,10 @@ interface StaffWorkspaceValue {
   // Errors
   error: string | null;
   clearError: () => void;
+  /** Send state for the composer button and feedback. */
+  isSending: boolean;
+  sendError: string | null;
+  clearSendError: () => void;
 }
 
 const StaffWorkspaceContext = createContext<StaffWorkspaceValue | null>(null);
@@ -116,6 +121,11 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
   } | null>(null);
   const [connection, setConnection] = useState<ConnectionState>(getConnectionState());
   const [error, setError] = useState<string | null>(null);
+
+  // Send state for the composer button and feedback.
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const clearSendError = useCallback(() => setSendError(null), []);
 
   const clearLowConfidenceAlert = useCallback(() => setLowConfidenceAlert(null), []);
 
@@ -208,6 +218,27 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
         setView((current) => {
           if (current.kind === "idle") {
             setPendingRequest(payload);
+
+            // Fire a browser notification so the staff member is alerted
+            // even if they're on another tab.
+            try {
+              const method = payload.method === "sign" ? "Sign language" : "Typed message";
+              const notify = (title: string, body: string) => {
+                new Notification(title, { body, icon: "/signova-badge-circular.png", tag: "signova-request" });
+              };
+              if (Notification.permission === "granted") {
+                notify("New request — Signova", `A Deaf user is waiting (${method}).`);
+              } else if (Notification.permission !== "denied") {
+                void Notification.requestPermission().then((permission) => {
+                  if (permission === "granted") {
+                    notify("New request — Signova", `A Deaf user is waiting (${method}).`);
+                  }
+                });
+              }
+            } catch {
+              /* Notification API not available */
+            }
+
             return {
               kind: "request",
               request: payload,
@@ -337,16 +368,23 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
       };
       commitMessages(sessionId, [...getMessages(sessionId), optimistic]);
 
+      setIsSending(true);
+      setSendError(null);
       try {
-        sendStaffMessage(sessionId, text.trim(), "speech");
+        // Wait for the server ack via the async path (message:acked event).
+        // sendStaffMessageAsync resolves only after the server has persisted
+        // and echoed the message back, giving real delivery confirmation.
+        await sendStaffMessageAsync(sessionId, text.trim(), "speech");
       } catch (err) {
-        setError(describeError(err, "Your reply could not be sent."));
+        setSendError(describeError(err, "Your reply could not be sent."));
         commitMessages(
           sessionId,
           getMessages(sessionId).map((m) =>
             m === optimistic ? { ...m, pending: false, failed: true } : m,
           ),
         );
+      } finally {
+        setIsSending(false);
       }
     },
     [activeSessionId, commitMessages, getMessages],
@@ -435,6 +473,9 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
       reloadWorkspace,
       error,
       clearError,
+      isSending,
+      sendError,
+      clearSendError,
     }),
     [
       organization,
@@ -460,6 +501,9 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
       reloadWorkspace,
       error,
       clearError,
+      isSending,
+      sendError,
+      clearSendError,
     ],
   );
 

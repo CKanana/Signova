@@ -14,50 +14,60 @@
 
 /* ==========================================================================
    Dark Theme
+   Triggered by data-theme="dark" on <html> (set by the shared AppShell's
+   useTheme hook and the index.html inline script). The legacy .admin-dark
+   class is kept as an alias so the old AdminTopbar still works during
+   any transition period.
    ========================================================================== */
 
+:root[data-theme="dark"],
+html[data-theme="dark"],
 .admin-dark {
-  --admin-bg: #1b1726;          /* deep charcoal/plum page surface */
-  --admin-surface: #241f33;     /* elevated dark card */
-  --admin-surface-muted: #2a2438;
-  --admin-surface-elevated: #2d2741;
+  --admin-bg: #15101F;
+  --admin-surface: #211A2E;
+  --admin-surface-muted: #1B1527;
+  --admin-surface-elevated: #271F37;
 
-  --admin-text: #e6e1ee;        /* light readable text */
-  --admin-text-secondary: #c6c0d4;
-  --admin-text-muted: #9a93ad;
+  --admin-text: #F3EDF8;
+  --admin-text-secondary: #B8ABCB;
+  --admin-text-muted: #B8ABCB;
+  --admin-text-inverse: #FFFFFF;
 
-  --admin-border: #3a334a;
-  --admin-border-subtle: #2e2840;
-  --admin-border-strong: #4a4160;
+  --admin-border: #372B4D;
+  --admin-border-subtle: #2D2340;
+  --admin-border-strong: #4A3C66;
 
-  --admin-primary: #7b4fc4;
-  --admin-primary-hover: #9a6cd0;
-  --admin-primary-active: #6a3db8;
-  --admin-primary-soft: #3a2c55;
-  --admin-primary-border: #5c4286;
+  --admin-primary: #7B43BC;
+  --admin-primary-hover: #9A6CD0;
+  --admin-primary-active: #6A3DB8;
+  --admin-primary-soft: #3A2C55;
+  --admin-primary-border: #5C4286;
+  --admin-on-primary: #FFFFFF;
 
-  --admin-teal: #4fb8b8;
-  --admin-teal-hover: #3da3a3;
-  --admin-teal-soft: #2a3534;
-  --admin-teal-border: #3a5e5e;
+  --admin-teal: #4FB8B8;
+  --admin-teal-hover: #3DA3A3;
+  --admin-teal-soft: #2A3534;
+  --admin-teal-border: #3A5E5E;
+  --admin-on-teal: #FFFFFF;
 
-  --admin-success: #4fb89a;
-  --admin-success-soft: #2a3f38;
-  --admin-success-border: #3a6e5e;
+  --admin-success: #4FB89A;
+  --admin-success-soft: #2A3F38;
+  --admin-success-border: #3A6E5E;
 
-  --admin-warning: #e8a33d;
-  --admin-warning-soft: #3a2f1f;
-  --admin-warning-border: #6e542a;
+  --admin-warning: #E8A33D;
+  --admin-warning-soft: #3A2F1F;
+  --admin-warning-border: #6E542A;
 
-  --admin-danger: #e0706a;
-  --admin-danger-soft: #3a2826;
-  --admin-danger-border: #6e3a36;
+  --admin-danger: #E0706A;
+  --admin-danger-soft: #3A2826;
+  --admin-danger-border: #6E3A36;
 
-  --admin-info: #5b8fc4;
-  --admin-info-soft: #2a384f;
-  --admin-info-border: #4a6e8a;
+  --admin-info: #5B8FC4;
+  --admin-info-soft: #2A384F;
+  --admin-info-border: #4A6E8A;
 
-  --admin-corn: #f8eed4;
+  --admin-corn: #2A2236;
+  --admin-corn-soft: #231C30;
 
   --admin-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
   --admin-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
@@ -67,6 +77,135 @@
   --admin-focus-ring: 0 0 0 3px rgba(123, 79, 196, 0.35);
 
   color-scheme: dark;
+}
+
+/* Ensure html and body pick up the dark background explicitly */
+html[data-theme="dark"],
+html[data-theme="dark"] body,
+html.admin-dark,
+html.admin-dark body {
+  background-color: var(--admin-bg) !important;
+  color: var(--admin-text) !important;
+}
+
+/* Cards, inputs, selects, modals all need the dark surface in dark mode */
+html[data-theme="dark"] .admin-card,
+html.admin-dark .admin-card {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border);
+}
+
+html[data-theme="dark"] .admin-input,
+html[data-theme="dark"] .admin-select,
+html[data-theme="dark"] .admin-textarea,
+html.admin-dark .admin-input,
+html.admin-dark .admin-select,
+html.admin-dark .admin-textarea {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .admin-modal,
+html[data-theme="dark"] .admin-drawer,
+html.admin-dark .admin-modal,
+html.admin-dark .admin-drawer {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border);
+}
+
+html[data-theme="dark"] .admin-table-wrap,
+html.admin-dark .admin-table-wrap {
+  background: var(--admin-surface);
+  border-color: var(--admin-border);
+}
+
+html[data-theme="dark"] .admin-table th,
+html.admin-dark .admin-table th {
+  background-color: var(--admin-surface-muted);
+  color: var(--admin-text-secondary);
+  border-color: var(--admin-border);
+}
+
+html[data-theme="dark"] .admin-table td,
+html.admin-dark .admin-table td {
+  border-color: var(--admin-border-subtle);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .admin-table tbody tr:hover,
+html.admin-dark .admin-table tbody tr:hover {
+  background-color: var(--admin-surface-muted);
+}
+
+html[data-theme="dark"] .admin-topbar,
+html[data-theme="dark"] .admin-sidebar,
+html.admin-dark .admin-topbar,
+html.admin-dark .admin-sidebar {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border);
+}
+
+html[data-theme="dark"] .admin-stat-card,
+html.admin-dark .admin-stat-card {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border);
+}
+
+html[data-theme="dark"] .admin-modal-overlay,
+html.admin-dark .admin-modal-overlay {
+  background-color: rgba(0, 0, 0, 0.65);
+}
+
+html[data-theme="dark"] .admin-btn--secondary,
+html.admin-dark .admin-btn--secondary {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .admin-btn--ghost,
+html.admin-dark .admin-btn--ghost {
+  color: var(--admin-text-secondary);
+}
+
+html[data-theme="dark"] .admin-btn--ghost:hover,
+html.admin-dark .admin-btn--ghost:hover {
+  background-color: var(--admin-surface-muted);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .admin-card__footer,
+html.admin-dark .admin-card__footer {
+  background-color: var(--admin-surface-muted);
+  border-color: var(--admin-border-subtle);
+}
+
+html[data-theme="dark"] .admin-sidebar__org-card,
+html.admin-dark .admin-sidebar__org-card {
+  background-color: var(--admin-surface-muted);
+  border-color: var(--admin-border-subtle);
+}
+
+html[data-theme="dark"] .admin-nav-item:hover,
+html.admin-dark .admin-nav-item:hover {
+  background-color: var(--admin-surface-muted);
+}
+
+html[data-theme="dark"] .admin-nav-item--active,
+html.admin-dark .admin-nav-item--active {
+  background-color: var(--admin-primary-soft);
+}
+
+html[data-theme="dark"] .admin-sidebar__footer,
+html.admin-dark .admin-sidebar__footer {
+  background-color: var(--admin-surface);
+  border-color: var(--admin-border-subtle);
+}
+
+html[data-theme="dark"] .admin-content,
+html.admin-dark .admin-content {
+  background-color: var(--admin-bg);
 }
 
 /* ==========================================================================

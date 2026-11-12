@@ -5,7 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { ConfidenceMeter, confidenceBand, bandLabel } from "../components/ui/ConfidenceMeter";
 import { EmptyState, ErrorBanner, LoadingState, WarningBanner } from "../components/ui/States";
-import { IconCheck, IconPower, IconSend, IconUsers } from "../components/ui/Icons";
+import { IconCheck, IconMessage, IconPower, IconSend, IconUsers } from "../components/ui/Icons";
 
 /**
  * The active communication workspace.
@@ -15,6 +15,8 @@ import { IconCheck, IconPower, IconSend, IconUsers } from "../components/ui/Icon
  * goes over the existing Socket.IO message:send event; the server derives
  * the STAFF sender from the token, persists once, and broadcasts to the
  * session room where the Deaf-user mobile app receives staff:message.
+ * Sends wait for the server ack (message:new with isConfirmed=true) and
+ * surface sending/sent/failed state in the composer.
  */
 
 export function SessionPage({ onNavigate }: { onNavigate: (view: "dashboard" | "history") => void }) {
@@ -28,8 +30,13 @@ export function SessionPage({ onNavigate }: { onNavigate: (view: "dashboard" | "
     sendReply,
     endActiveSession,
     resetToDashboard,
+    acceptRequest,
+    declineRequest,
     error,
     clearError,
+    isSending,
+    sendError,
+    clearSendError,
   } = useStaffWorkspace();
 
   const [draft, setDraft] = useState("");
@@ -67,18 +74,42 @@ export function SessionPage({ onNavigate }: { onNavigate: (view: "dashboard" | "
     }
   }
 
-  /* ---------------- Incoming request ---------------- */
+  /* ---------------- Incoming request — accept inline ---------------- */
   if (view.kind === "request" && pendingRequest) {
     return (
       <Card>
-        <EmptyState
-          title="You have an incoming request"
-          action={
-            <Button onClick={() => onNavigate("dashboard")}>Go to dashboard to accept</Button>
-          }
-        >
-          A Deaf user is waiting. Accept the request from your dashboard to open the conversation.
-        </EmptyState>
+        <section className="staff-request" aria-live="polite">
+          <div className="staff-request__head">
+            <Badge tone="solid" dot pulse>New</Badge>
+            <h2 className="staff-request__title">Incoming communication request</h2>
+          </div>
+          <p className="staff-section-lede" style={{ marginBottom: 16 }}>
+            A Deaf user is waiting to communicate with you. Accept to open the live conversation.
+          </p>
+          <dl className="staff-kv staff-request__facts">
+            <dt>Communication method</dt>
+            <dd>{pendingRequest.method === "sign" ? "Sign language" : "Typed message"}</dd>
+            <dt>Time received</dt>
+            <dd>{new Date(pendingRequest.startedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</dd>
+            <dt>Status</dt>
+            <dd>Waiting for you</dd>
+          </dl>
+          <div className="staff-row">
+            <Button
+              loading={isLoadingSession}
+              onClick={() => void acceptRequest()}
+            >
+              <IconMessage />
+              Accept and start communicating
+            </Button>
+            <Button variant="ghost" onClick={declineRequest} disabled={isLoadingSession}>
+              Dismiss
+            </Button>
+          </div>
+          <p className="staff-field__hint" style={{ marginTop: 10 }}>
+            The conversation opens here as soon as you accept.
+          </p>
+        </section>
       </Card>
     );
   }
@@ -214,11 +245,26 @@ export function SessionPage({ onNavigate }: { onNavigate: (view: "dashboard" | "
                 }
               }}
               rows={2}
+              disabled={isSending}
             />
-            <Button type="submit" disabled={!draft.trim()}>
+            <Button
+              type="submit"
+              disabled={!draft.trim() || isSending}
+              loading={isSending}
+              style={{ marginTop: 8 }}
+            >
               <IconSend />
-              Send
+              {isSending ? "Sending…" : "Send"}
             </Button>
+            {sendError ? (
+              <p style={{ color: "var(--signova-danger)", marginTop: 6, marginBottom: 0 }}>
+                {sendError}
+                {" "}
+                <Button size="sm" variant="secondary" onClick={clearSendError}>
+                  Dismiss
+                </Button>
+              </p>
+            ) : null}
           </form>
         </Card>
       </div>

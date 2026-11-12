@@ -11,6 +11,11 @@
  * - Muted Neutral Borders: #E3DCD3
  */
 
+/* ===== Reset shared web-theme.css background so admin controls it fully ===== */
+:root {
+  background: unset !important;
+}
+
 :root {
   /* Brand Tokens */
   --admin-primary: #5B2A86;
@@ -484,8 +489,11 @@ a:hover {
   width: 100%;
   max-width: var(--admin-max-width);
   margin: 0 auto;
-  padding: 28px;
+  padding: 0;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 /* ==========================================================================
@@ -1354,7 +1362,7 @@ a:hover {
   }
 
   .admin-content {
-    padding: 16px;
+    padding: 0;
   }
 
   .admin-topbar {

@@ -7,6 +7,7 @@ import { requestLogger } from "./middleware/requestLogger.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { initRealtime } from "./realtime/gateway.js";
+import { reconcileStuckTellers } from "./services/sessionService.js";
 
 import authRoutes from "./routes/auth.js";
 import organizationRoutes from "./routes/organizations.js";
@@ -60,6 +61,8 @@ async function main() {
     console.log(`[server] Signova API listening on http://localhost:${config.port}`);
     // eslint-disable-next-line no-console
     console.log(`[server] environment: ${config.env}`);
+    // Repair any tellers left BUSY from a previous crash / unclean shutdown.
+    void reconcileStuckTellers();
   });
 
   // Graceful shutdown

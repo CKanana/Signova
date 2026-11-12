@@ -3,12 +3,13 @@
     "name": "Signova",
     "slug": "signova-mobile",
     "scheme": "signova",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "light",
     "web": {
       "favicon": "./src/assets/signova-brand-assets/favicons/hands-s/favicon-48x48.png"
     },
     "plugins": [
+      "expo-dev-client",
       [
         "expo-camera",
         {
@@ -17,10 +18,22 @@
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": false
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+     
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 37,
+            "targetSdkVersion": 37
+          }
+        }
       ]
     ],
     "ios": {
-      "bundleIdentifier": "ke.co.signova.mobile"
+      "bundleIdentifier": "ke.co.signova.mobile",
+      "supportsTablet": true
     },
     "android": {
       "package": "ke.co.signova.mobile"

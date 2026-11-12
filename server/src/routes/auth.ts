@@ -11,13 +11,17 @@ import {
   forgotPasswordHandler,
   resetPasswordHandler,
   rejectPublicRegistrationHandler,
+  loginWithGoogleHandler,
+  loginWithGoogleSchema,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middleware/auth.js";
 import { authLimiter, forgotPasswordLimiter, resetPasswordLimiter } from "../middleware/rateLimit.js";
+import { validate } from "../middleware/validate.js";
 
 const router = Router();
 
 router.post("/login", authLimiter, loginHandler);
+router.post("/login-with-google", authLimiter, validate({ body: loginWithGoogleSchema }), loginWithGoogleHandler);
 router.post("/register", authLimiter, rejectPublicRegistrationHandler);
 router.post("/forgot-password", forgotPasswordLimiter, forgotPasswordHandler);
 router.post("/reset-password", resetPasswordLimiter, resetPasswordHandler);

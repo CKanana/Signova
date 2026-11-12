@@ -14,6 +14,7 @@ import {
 import { theme } from "../../../../shared/constants/theme";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
+import { useHandLandmarker } from "../hooks/useHandLandmarker";
 import { liveSigningStyles as styles } from "../styles/liveSigningStyles";
 
 export function LiveSigningScreen() {
@@ -34,7 +35,7 @@ export function LiveSigningScreen() {
     if (!cameraPermission || cameraPermission.granted || hasRequestedPermission.current) return;
 
     hasRequestedPermission.current = true;
-    if (!cameraPermission.canAskAgain) {
+    if (!cameraPermission?.canAskAgain) {
       setCameraError("Camera access is off. Enable it in device settings to continue signing.");
       return;
     }
@@ -71,10 +72,16 @@ export function LiveSigningScreen() {
   const latestStaffMessage = [...messages].reverse().find((message) => message.sender === "staff");
   const hasCameraPermission = cameraPermission?.granted === true;
 
-  // "Review and send" triggers a real translation through the model-agnostic
-  // seam. The context routes to "confirm" (high confidence) or "uncertain"
-  // (low confidence) based on the server's response — there is no fabricated
-  // confidence anywhere in the UI.
+  // --- Hand landmarker: MediaPipe → adapter → recorder → recogniser -----------
+  const { processFrame, initialise: initialiseLandmarker, destroy: destroyLandmarker } =
+    useHandLandmarker({
+      onFrame: () => {
+        // Hand frames flow through SessionContext's useHandRecorder via
+        // useHandLandmarker's internal pushFrame wiring. This screen only
+        // supplies raw camera frames via processFrame below.
+      },
+    });
+
   const handleReviewAndSend = () => {
     goToStep("translating");
   };
@@ -113,7 +120,7 @@ export function LiveSigningScreen() {
                 </Text>
               </View>
               <Pressable
-                onPress={() => setFacing((current) => current === "front" ? "back" : "front")}
+                onPress={() => setFacing((current) => (current === "front" ? "back" : "front"))}
                 accessibilityRole="button"
                 accessibilityLabel="Switch camera"
                 style={({ pressed }) => [styles.cameraSettingsButton, pressed && styles.pressed]}

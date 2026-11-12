@@ -243,3 +243,41 @@ export async function updateSessionStatus(
 export async function incrementMessageCount(sessionId: Types.ObjectId | string) {
   await Session.updateOne({ _id: sessionId }, { $inc: { messageCount: 1 } });
 }
+
+/**
+ * Reconcile teller statuses on server startup (or on-demand).
+ *
+ * Finds every teller marked BUSY that has no CONNECTING or ACTIVE session,
+ * and resets them to FREE. This repairs any tellers stuck BUSY due to
+ * crashes, ungraceful shutdowns, or missed session:end events.
+ */
+export async function reconcileStuckTellers(): Promise<number> {
+  // Find all tellers currently marked BUSY.
+  const busyTellers = await Teller.find({ status: "BUSY" }).select("_id organization").lean();
+  if (busyTellers.length === 0) return 0;
+
+  const busyIds = busyTellers.map((t) => t._id);
+
+  // Of those, find which ones actually have an active/connecting session.
+  const activeSessions = await Session.find({
+    teller: { $in: busyIds },
+    status: { $in: ["CONNECTING", "ACTIVE"] },
+  })
+    .select("teller")
+    .lean();
+
+  const activeTellerIds = new Set(activeSessions.map((s) => s.teller.toString()));
+
+  // Any BUSY teller with no live session is stuck — free them.
+  const stuckIds = busyIds.filter((id) => !activeTellerIds.has(id.toString()));
+  if (stuckIds.length === 0) return 0;
+
+  await Teller.updateMany(
+    { _id: { $in: stuckIds } },
+    { $set: { status: "FREE" } },
+  );
+
+  // eslint-disable-next-line no-console
+  console.log(`[reconcile] freed ${stuckIds.length} stuck teller(s): ${stuckIds.join(", ")}`);
+  return stuckIds.length;
+}

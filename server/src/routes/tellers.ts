@@ -14,9 +14,10 @@ const router = Router();
 router.get("/", requireAuth, listTellersHandler);
 router.get("/:id", requireAuth, getTellerHandler);
 
-// Write: admin only.
+// Write: admin only (staff may only change their own assigned teller's
+// availability — enforced server-side by availabilityHandler).
 router.post("/", requireAuth, requireRole("ADMIN"), createTellerHandler);
 router.put("/:id", requireAuth, requireRole("ADMIN"), updateTellerHandler);
-router.patch("/:id/availability", requireAuth, availabilityHandler);
+router.patch("/:id/availability", requireAuth, requireRole("ADMIN"), availabilityHandler);
 
 export default router;

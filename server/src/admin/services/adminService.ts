@@ -302,19 +302,28 @@ export async function updateTeller(
   currentUserId: string,
   req: import("express").Request
 ): Promise<import("mongoose").Document<unknown, {}, import("../../models/teller.js").ITeller>> {
-  const updateData: any = { ...updates };
+  const updateData: any = {};
   const unsetData: Record<string, 1> = {};
 
+  // Copy scalar fields only — never pass raw empty strings to Mongoose ObjectId fields
+  if ("name" in updates && updates.name !== undefined) updateData.name = updates.name;
+  if ("serviceLabel" in updates && updates.serviceLabel !== undefined) updateData.serviceLabel = updates.serviceLabel;
+  if ("serviceDesk" in updates && updates.serviceDesk !== undefined) updateData.serviceDesk = updates.serviceDesk;
+  if ("counterNumber" in updates && updates.counterNumber !== undefined) updateData.counterNumber = updates.counterNumber;
+
   if ("staffUser" in updates) {
-    if (!updates.staffUser || updates.staffUser === "") {
-      delete updateData.staffUser;
+    const su = updates.staffUser;
+    if (!su || su === "") {
+      // Explicit unassign — remove the field
       unsetData.staffUser = 1;
+    } else {
+      updateData.staffUser = su;
     }
   }
 
   const query: any = Object.keys(unsetData).length > 0
-    ? { ...updateData, $unset: unsetData }
-    : updateData;
+    ? { $set: updateData, $unset: unsetData }
+    : { $set: updateData };
 
   const teller = await Teller.findOneAndUpdate(
     { _id: tellerId, organization: orgId },
@@ -402,8 +411,7 @@ export async function assignStaffToTeller(
   const user = await User.findOne({
     _id: staffUserId,
     organization: orgId,
-    role: "STAFF",
-    isActive: true,
+    role: { $in: ["STAFF", "ADMIN"] },
   });
   if (!user) throw new NotFoundError("Staff user not found");
 
@@ -413,24 +421,75 @@ export async function assignStaffToTeller(
 export async function listSessions(
   orgId: string | Types.ObjectId,
   opts: { tellerId?: string; status?: string; page?: number; pageSize?: number }
-): Promise<{ items: import("mongoose").Document<unknown, {}, import("../../models/session.js").ISession>[]; total: number }> {
+): Promise<{ items: any[]; total: number }> {
   const filter: Record<string, unknown> = { organization: orgId };
   if (opts.tellerId) filter.teller = opts.tellerId;
   if (opts.status) filter.status = opts.status;
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 100;
   const skip = (page > 0 ? page - 1 : 0) * pageSize;
-  const [items, total] = await Promise.all([
-    Session.find(filter).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
+  const [docs, total] = await Promise.all([
+    Session.find(filter)
+      .populate("teller", "name serviceDesk counterNumber status")
+      .populate("deafUser", "name")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize),
     Session.countDocuments(filter),
   ]);
+
+  // Serialize to the shape the admin portal expects.
+  const items = docs.map((s) => {
+    const t = s.teller as any;
+    const d = s.deafUser as any;
+    return {
+      id: s._id.toString(),
+      organization: s.organization.toString(),
+      teller: t && typeof t === "object" && t._id
+        ? { id: t._id.toString(), name: t.name ?? "Counter", status: t.status }
+        : null,
+      deafUser: d && typeof d === "object" && d._id
+        ? { id: d._id.toString(), name: d.name ?? "Deaf user" }
+        : null,
+      method: s.method,
+      status: s.status,
+      pairingCode: s.pairingCode,
+      startedAt: s.startedAt.toISOString(),
+      endedAt: s.endedAt ? s.endedAt.toISOString() : undefined,
+      endReason: s.endReason,
+      messageCount: s.messageCount,
+      createdAt: s.createdAt ? (s.createdAt as Date).toISOString() : s.startedAt.toISOString(),
+    };
+  });
+
   return { items, total };
 }
 
 export async function getSession(orgId: string | Types.ObjectId, sessionId: string) {
-  const session = await Session.findOne({ _id: sessionId, organization: orgId });
-  if (!session) throw new NotFoundError("Session not found");
-  return session;
+  const s = await Session.findOne({ _id: sessionId, organization: orgId })
+    .populate("teller", "name serviceDesk counterNumber status")
+    .populate("deafUser", "name");
+  if (!s) throw new NotFoundError("Session not found");
+  const t = s.teller as any;
+  const d = s.deafUser as any;
+  return {
+    id: s._id.toString(),
+    organization: s.organization.toString(),
+    teller: t && typeof t === "object" && t._id
+      ? { id: t._id.toString(), name: t.name ?? "Counter", status: t.status }
+      : null,
+    deafUser: d && typeof d === "object" && d._id
+      ? { id: d._id.toString(), name: d.name ?? "Deaf user" }
+      : null,
+    method: s.method,
+    status: s.status,
+    pairingCode: s.pairingCode,
+    startedAt: s.startedAt.toISOString(),
+    endedAt: s.endedAt ? s.endedAt.toISOString() : undefined,
+    endReason: s.endReason,
+    messageCount: s.messageCount,
+    createdAt: s.createdAt ? (s.createdAt as Date).toISOString() : s.startedAt.toISOString(),
+  };
 }
 
 export async function listAuditLogs(

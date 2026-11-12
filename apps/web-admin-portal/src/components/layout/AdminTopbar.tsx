@@ -15,28 +15,7 @@ const ROUTE_TITLES: Record<string, { section: string; title: string }> = {
   "/admin/account": { section: "Settings", title: "Administrator Account" },
 };
 
-const TOCOMPANY = [
-  "Signova",
-  "Signova Guide",
-  "Signova Education",
-  "Signova Health",
-  "Signova Travel",
-  "Addis Doorkeeper",
-  "KITH",
-  "Apex Hospital Group",
-  "Westview",
-  "Fajar Health",
-];
-
-function randomCompany(): string {
-  return TOCOMPANY[Math.floor(Math.random() * TOCOMPANY.length)];
-}
-
-function randomWebsite(): string {
-  const company = randomCompany();
-  const suffixes = [".com", ".co.ke", ".org", ".gov", ".ac.ke", ".edu"];
-  return `https://www.${company}${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
-}
+const THEME_KEY = "signova-theme";
 
 /** Admin topbar: breadcrumbs, system indicator, and the theme toggle. */
 export function AdminTopbar() {
@@ -48,28 +27,29 @@ export function AdminTopbar() {
 
   useEffect(() => {
     setMounted(true);
-    // Default to system preference, but honour any previously persisted choice.
     try {
-      const saved = window.sessionStorage.getItem("signova.admin.theme");
+      const saved = localStorage.getItem(THEME_KEY);
       if (saved === "light" || saved === "dark") setTheme(saved);
       else if (window.matchMedia("(prefers-color-scheme: dark)").matches) setTheme("dark");
     } catch {
-      // sessionStorage unavailable
+      // storage unavailable
     }
   }, []);
 
-  // Apply the theme as CSS variables on :root and persist the choice.
+  // Apply theme via data-theme attribute (matches shared AppShell useTheme hook)
+  // and keep .admin-dark as a fallback alias.
   useEffect(() => {
     const root = document.documentElement;
+    root.setAttribute("data-theme", theme);
     if (theme === "dark") {
       root.classList.add("admin-dark");
     } else {
       root.classList.remove("admin-dark");
     }
     try {
-      window.sessionStorage.setItem("signova.admin.theme", theme);
+      localStorage.setItem(THEME_KEY, theme);
     } catch {
-      // sessionStorage unavailable
+      // storage unavailable
     }
   }, [theme]);
 

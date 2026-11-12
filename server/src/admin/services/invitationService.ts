@@ -257,29 +257,21 @@ export async function resendInvitation(
   // Resolve the staff by their id (the frontend passes the uid) so we can
   // target the email stored on the account, never an email from the request.
   const user = await User.findById(userId);
-  if (!user || user.organization.toString() !== String(orgId) || user.role !== "STAFF" || user.isActive) {
-    throw new NotFoundError("No pending invitation found for this staff member.");
+  // Allow resend for any inactive STAFF member in this org that hasn't completed
+  // setup yet (isActive=false means they haven't accepted their invite + enrolled 2FA).
+  if (!user || user.organization.toString() !== String(orgId) || user.role !== "STAFF") {
+    throw new NotFoundError("Staff member not found.");
+  }
+  if (user.isActive) {
+    throw new BadRequestError("This staff member has already completed account setup.");
   }
   const staffEmail = user.email;
   if (!staffEmail) {
-    throw new NotFoundError("No pending invitation found for this staff member.");
+    throw new NotFoundError("No email address found for this staff member.");
   }
 
-  const pendingInvitation = await Invitation.findOne({
-    organization: orgId,
-    email: staffEmail,
-    status: "pending",
-    expiresAt: { $gt: new Date() },
-  });
-  if (!pendingInvitation || pendingInvitation.user.toString() !== user._id.toString()) {
-    throw new NotFoundError("No pending invitation found for this staff member.");
-  }
-
-  // Supersede/expire any existing pending invitations for this staff member
-  // so a single invite token is always current. The old token is invalidated
-  // on resend (the old link becomes dead) and a fresh single-use token is
-  // issued. Old invite link still resolves (idempotent overwrite); the user
-  // gets the fresh email.
+  // Expire all existing invitations for this user (pending or otherwise active)
+  // so only the fresh token is valid going forward.
   await Invitation.updateMany(
     { organization: orgId, user: user._id, status: "pending" },
     { $set: { status: "expired", expiresAt: new Date() } },

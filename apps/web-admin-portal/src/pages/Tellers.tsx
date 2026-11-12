@@ -1,5 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useAdminAuth } from "../context/AdminAuthContext";
+import { useToast } from "../context/ToastContext";
 import { adminApi, ApiError } from "../services/api";
 import type { Teller, TellerStatus, AdminUserSummary } from "../types/admin";
 import {
@@ -27,11 +28,11 @@ import {
 
 export function Tellers() {
   const { user } = useAdminAuth();
+  const { success, error: toastError } = useToast();
   const [tellers, setTellers] = useState<Teller[]>([]);
   const [staffUsers, setStaffUsers] = useState<AdminUserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: "success" | "danger"; message: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -73,7 +74,7 @@ export function Tellers() {
           status: statusFilter !== "all" ? statusFilter : undefined,
           search: search.trim() || undefined,
         }),
-        adminApi.listStaff({ pageSize: 100, onlyActive: true }),
+        adminApi.listStaff({ pageSize: 100 }),
       ]);
       setTellers(tellersRes.items);
       setStaffUsers(staffRes.items);
@@ -110,7 +111,7 @@ export function Tellers() {
       setCreateCounterNumber("");
       setCreateStaffUser("");
       setCreatePairingCode("");
-      setFeedback({ type: "success", message: `Counter ${createCounterNumber} created successfully.` });
+      success(`Counter ${createCounterNumber} created successfully.`);
       loadData();
     } catch (err: any) {
       setCreateError(err?.message ?? "Failed to create counter.");
@@ -140,10 +141,11 @@ export function Tellers() {
         serviceDesk: editServiceDesk.trim(),
         counterNumber: editCounterNumber.trim(),
         serviceLabel: editServiceLabel.trim() || undefined,
-        staffUser: editStaffUser || undefined,
+        // Send empty string to signal "unassign" — the backend transforms "" to null
+        staffUser: editStaffUser,
       });
       setEditingTeller(null);
-      setFeedback({ type: "success", message: `Counter ${editCounterNumber} updated.` });
+      success(`Counter ${editCounterNumber} updated.`);
       loadData();
     } catch (err: any) {
       setEditError(err?.message ?? "Failed to update counter.");
@@ -156,10 +158,10 @@ export function Tellers() {
     setStatusUpdatingId(teller.id);
     try {
       await adminApi.setTellerStatus(teller.id, newStatus);
-      setFeedback({ type: "success", message: `${teller.name} status updated to ${newStatus}.` });
+      success(`${teller.name} status updated to ${newStatus}.`);
       setTellers((prev) => prev.map((t) => (t.id === teller.id ? { ...t, status: newStatus } : t)));
     } catch (err: any) {
-      setFeedback({ type: "danger", message: err?.message ?? "Failed to update counter status." });
+      toastError(err?.message ?? "Failed to update counter status.");
     } finally {
       setStatusUpdatingId(null);
     }
@@ -172,14 +174,13 @@ export function Tellers() {
         prev.map((t) => (t.id === teller.id ? { ...t, staffUser: newStaffId || undefined } : t))
       );
       const staffName = newStaffId ? staffMap.get(newStaffId) : null;
-      setFeedback({
-        type: "success",
-        message: newStaffId
-          ? `Allocated ${staffName} to Counter ${teller.counterNumber}.`
-          : `Unassigned staff from Counter ${teller.counterNumber}.`,
-      });
+      success(
+        newStaffId
+          ? `Allocated ${staffName ?? "staff"} to Counter ${teller.counterNumber}.`
+          : `Unassigned staff from Counter ${teller.counterNumber}.`
+      );
     } catch (err: any) {
-      setFeedback({ type: "danger", message: err?.message ?? "Failed to allocate staff to counter." });
+      toastError(err?.message ?? "Failed to allocate staff to counter.");
     }
   };
 
@@ -203,12 +204,6 @@ export function Tellers() {
           </Button>
         }
       />
-
-      {feedback && (
-        <Alert variant={feedback.type} onClose={() => setFeedback(null)}>
-          {feedback.message}
-        </Alert>
-      )}
 
       {error && (
         <Alert variant="danger" title="Error Loading Counters">

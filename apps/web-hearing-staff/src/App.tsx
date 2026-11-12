@@ -101,6 +101,19 @@ function StaffProtectedShell() {
   const { pendingRequest, connection, activeSessionId } = useStaffWorkspace();
   const location = useLocation();
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const prevPendingRef = React.useRef<typeof pendingRequest>(null);
+
+  // Auto-navigate to session page when a new request arrives so staff
+  // always sees the notification immediately without having to click anything.
+  React.useEffect(() => {
+    if (pendingRequest && !prevPendingRef.current) {
+      if (location.pathname !== "/staff/session") {
+        navigate("/staff/session");
+      }
+    }
+    prevPendingRef.current = pendingRequest;
+  }, [pendingRequest, location.pathname, navigate]);
 
   const routeInfo = ROUTE_TITLES[location.pathname] ?? { section: "Workspace", title: "Dashboard" };
 
@@ -122,47 +135,111 @@ function StaffProtectedShell() {
   ];
 
   return (
-    <AppShell
-      brandLabel="TELLER DESK"
-      logoSrc={signovaLogoLight}
-      logoMarkSrc={signovaMarkLight}
-      organization={{ name: organization?.name ?? "", serviceName: organization?.serviceName }}
-      user={user ? { name: user.name, role: "Teller", initials: initials(user.name) } : undefined}
-      onSignOut={() => void signOut()}
-      navSections={navSections}
-      title={routeInfo.title}
-      subtitle={routeInfo.section}
-      statusPill={connectionStatusPill(connection)}
-      footer={<TellerAvailabilityFooter />}
-    >
-      <Routes>
-        <Route path="/" element={<Navigate to="/staff/dashboard" replace />} />
-        <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
-        <Route
-          path="/staff/dashboard"
-          element={
-            <DashboardPage
-              onOpenSession={() => navigate("/staff/session")}
-              onOpenHistory={() => navigate("/staff/history")}
-            />
-          }
-        />
-        <Route
-          path="/staff/session"
-          element={
-            <SessionPage
-              onNavigate={(v) => navigate(v === "dashboard" ? "/staff/dashboard" : "/staff/history")}
-            />
-          }
-        />
-        <Route path="/staff/history" element={<HistoryPage />} />
-        <Route path="/staff/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/staff/dashboard" replace />} />
-      </Routes>
-      <span className="sr-only" aria-live="polite">
-        {activeSessionId ? "A communication session is active." : "No active session."}
-      </span>
-    </AppShell>
+    <>
+      <AppShell
+        brandLabel="TELLER DESK"
+        logoSrc={signovaLogoLight}
+        logoMarkSrc={signovaMarkLight}
+        organization={{ name: organization?.name ?? "", serviceName: organization?.serviceName }}
+        user={user ? { name: user.name, role: "Teller", initials: initials(user.name) } : undefined}
+        onSignOut={() => setShowLogoutConfirm(true)}
+        navSections={navSections}
+        title={routeInfo.title}
+        subtitle={routeInfo.section}
+        statusPill={connectionStatusPill(connection)}
+        footer={<TellerAvailabilityFooter />}
+      >
+        <Routes>
+          <Route path="/" element={<Navigate to="/staff/dashboard" replace />} />
+          <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
+          <Route
+            path="/staff/dashboard"
+            element={
+              <DashboardPage
+                onOpenSession={() => navigate("/staff/session")}
+                onOpenHistory={() => navigate("/staff/history")}
+              />
+            }
+          />
+          <Route
+            path="/staff/session"
+            element={
+              <SessionPage
+                onNavigate={(v) => navigate(v === "dashboard" ? "/staff/dashboard" : "/staff/history")}
+              />
+            }
+          />
+          <Route path="/staff/history" element={<HistoryPage />} />
+          <Route path="/staff/settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/staff/dashboard" replace />} />
+        </Routes>
+        <span className="sr-only" aria-live="polite">
+          {activeSessionId ? "A communication session is active." : "No active session."}
+        </span>
+      </AppShell>
+
+      {/* Logout confirmation dialog */}
+      {showLogoutConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="staff-logout-title"
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(10,5,20,0.55)", backdropFilter: "blur(3px)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--signova-surface, #FDF8EC)",
+              border: "1px solid var(--signova-border, #E9E2D7)",
+              borderRadius: "16px",
+              boxShadow: "0 20px 48px rgba(0,0,0,0.25)",
+              padding: "28px",
+              maxWidth: "400px",
+              width: "100%",
+            }}
+          >
+            <h2
+              id="staff-logout-title"
+              style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 800,
+                fontFamily: "Manrope, sans-serif", color: "var(--signova-text, #1E1B2E)" }}
+            >
+              Sign out?
+            </h2>
+            <p style={{ margin: "0 0 24px", fontSize: "14px", lineHeight: "1.5",
+              color: "var(--signova-muted-text, #6B6575)" }}>
+              You'll need to sign in again to access your workspace. Any active session will remain open for the Deaf user.
+            </p>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: "9px 18px", borderRadius: "10px", border: "1.5px solid var(--signova-border, #E9E2D7)",
+                  background: "transparent", cursor: "pointer", fontSize: "14px", fontWeight: 700,
+                  color: "var(--signova-text, #1E1B2E)",
+                }}
+              >
+                Stay signed in
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowLogoutConfirm(false); void signOut(); }}
+                style={{
+                  padding: "9px 18px", borderRadius: "10px", border: "none",
+                  background: "var(--signova-danger, #B82821)", color: "#fff",
+                  cursor: "pointer", fontSize: "14px", fontWeight: 700,
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

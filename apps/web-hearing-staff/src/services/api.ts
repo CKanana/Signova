@@ -34,12 +34,15 @@ export interface StaffUser {
 }
 
 export interface AuthResult {
-  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval";
+  status: "2fa_required" | "mfa_enroll_required" | "authenticated" | "pending_approval"
+    | "google_verified" | "google_account_not_found" | "google_unverified"
+    | "google_duplicate" | "google_ambiguous";
   challengeToken?: string;
   accessToken?: string;
   refreshToken?: string;
   user?: StaffUser;
   message?: string;
+  requestId?: string;
 }
 
 /** Full session record as returned by the staff-facing endpoints. */
@@ -139,6 +142,14 @@ export const api = {
 
   login: (email: string, password: string) =>
     request<AuthResult>("/api/auth/login", { method: "POST", body: { email, password }, auth: false }),
+
+  /** Google OAuth 2.0 / OpenID Connect sign-in (existing account only). */
+  loginWithGoogle: (googleIdToken: string) =>
+    request<AuthResult>("/api/auth/login-with-google", {
+      method: "POST",
+      body: { googleIdToken },
+      auth: false,
+    }),
 
   /* ---------- Password recovery (staff-only, unauthenticated) ---------- */
 

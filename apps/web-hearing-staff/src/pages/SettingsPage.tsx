@@ -7,6 +7,27 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { ErrorBanner, LoadingState } from "../components/ui/States";
 
+/** Eye-open icon for password show */
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+/** Eye-off icon for password hidden */
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
 /**
  * Account settings: profile from GET /api/auth/me, 2FA status, and the
  * change-password flow (POST /api/auth/change-password — verified to exist
@@ -23,6 +44,11 @@ export function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
+
+  // Password visibility state
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -114,44 +140,92 @@ export function SettingsPage() {
               <label className="staff-field__label" htmlFor="current-password">
                 Current password
               </label>
-              <input
-                id="current-password"
-                className="staff-input"
-                type="password"
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  id="current-password"
+                  className="staff-input"
+                  type={showCurrent ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                  style={{ paddingRight: "44px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrent((v) => !v)}
+                  aria-label={showCurrent ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute", right: "4px", top: "50%", transform: "translateY(-50%)",
+                    width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "none", border: "none", cursor: "pointer", color: "var(--signova-muted-text, #68636B)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  {showCurrent ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
             </div>
             <div className="staff-field">
               <label className="staff-field__label" htmlFor="new-password">
                 New password
               </label>
-              <input
-                id="new-password"
-                className="staff-input"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  id="new-password"
+                  className="staff-input"
+                  type={showNew ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  style={{ paddingRight: "44px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew((v) => !v)}
+                  aria-label={showNew ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute", right: "4px", top: "50%", transform: "translateY(-50%)",
+                    width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "none", border: "none", cursor: "pointer", color: "var(--signova-muted-text, #68636B)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  {showNew ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
               <span className="staff-field__hint">At least 10 characters.</span>
             </div>
             <div className="staff-field">
               <label className="staff-field__label" htmlFor="confirm-password">
                 Confirm new password
               </label>
-              <input
-                id="confirm-password"
-                className="staff-input"
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  id="confirm-password"
+                  className="staff-input"
+                  type={showConfirm ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  style={{ paddingRight: "44px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((v) => !v)}
+                  aria-label={showConfirm ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute", right: "4px", top: "50%", transform: "translateY(-50%)",
+                    width: "36px", height: "36px", display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "none", border: "none", cursor: "pointer", color: "var(--signova-muted-text, #68636B)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  {showConfirm ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
             </div>
             <Button type="submit" loading={isSaving}>
               Change password

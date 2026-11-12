@@ -110,6 +110,24 @@ export const adminApi = {
       message?: string;
     }>("/api/admin/login", { method: "POST", body: { email, password }, auth: false }),
 
+  loginWithGoogle: (googleIdToken: string) =>
+    request<{
+      status:
+        | "google_verified"
+        | "google_account_not_found"
+        | "google_unverified"
+        | "google_login_requires_2fa"
+        | "google_login_2fa_required"
+        | "google_account_unlinked"
+        | "authenticated"
+        | "mfa_enroll_required";
+      challengeToken?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      user?: AdminUserSummary;
+      message?: string;
+    }>("/api/admin/login-with-google", { method: "POST", body: { googleIdToken }, auth: false }),
+
   verify2FA: (challengeToken: string, code: string) =>
     request<{
       status: "authenticated";
@@ -220,7 +238,7 @@ export const adminApi = {
       serviceLabel?: string;
       serviceDesk?: string;
       counterNumber?: string;
-      staffUser?: string;
+      staffUser?: string | null;
     }
   ) => request<{ teller: Teller }>(`/api/admin/tellers/${id}`, { method: "PUT", body: data }),
 

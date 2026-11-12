@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from "react";
 import { useAdminAuth, applyOrganizationTheme } from "../context/AdminAuthContext";
+import { useToast } from "../context/ToastContext";
 import { adminApi, ApiError } from "../services/api";
 import type { OrganizationProfile } from "../types/admin";
 import {
@@ -44,12 +45,12 @@ const BUILT_IN_ASSETS = [
 
 export function OrganizationSettings() {
   const { organization, setOrganization } = useAdminAuth();
+  const { success, error: toastError } = useToast();
   const [profile, setProfile] = useState<OrganizationProfile | null>(organization);
   const [originalProfile, setOriginalProfile] = useState<OrganizationProfile | null>(organization);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   // Email domains input
   const [domainInput, setDomainInput] = useState("");
@@ -120,7 +121,6 @@ export function OrganizationSettings() {
     e.preventDefault();
     if (!profile) return;
     setError(null);
-    setSuccess(null);
 
     // Validate colors
     if (profile.colors?.primary && !HEX_COLOR_REGEX.test(profile.colors.primary)) {
@@ -156,9 +156,9 @@ export function OrganizationSettings() {
       setOrganization(res.profile);
       setDomainInput(res.profile.allowedEmailDomains?.join(", ") ?? "");
       applyOrganizationTheme(res.profile.colors);
-      setSuccess("Organization settings successfully saved and applied across Admin, Staff, and Deaf kiosks.");
+      success("Organisation settings saved and applied.");
     } catch (err: any) {
-      setError(err?.message ?? "Failed to save organization settings.");
+      toastError(err?.message ?? "Failed to save organisation settings.", "Save Failed");
     } finally {
       setSaving(false);
     }
@@ -182,12 +182,6 @@ export function OrganizationSettings() {
       {error && (
         <Alert variant="danger" onClose={() => setError(null)}>
           {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert variant="success" onClose={() => setSuccess(null)}>
-          {success}
         </Alert>
       )}
 
@@ -731,7 +725,7 @@ export function OrganizationSettings() {
                   onClick={() => {
                     setProfile(originalProfile);
                     setDomainInput(originalProfile?.allowedEmailDomains?.join(", ") ?? "");
-                    applyOrganizationTheme(originalProfile?.colors);
+                    applyOrganizationTheme(originalProfile?.colors ?? { primary: "", background: "" });
                   }}
                 >
                   Discard Changes

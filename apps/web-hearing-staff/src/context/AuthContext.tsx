@@ -30,6 +30,7 @@ export interface StaffAuthValue {
   confirmEnrollment: (code: string) => Promise<void>;
   cancelLogin: () => void;
   signOut: () => Promise<void>;
+  loginWithGoogle: (googleIdToken: string) => Promise<void>;
   showForgot: () => void;
   requestReset: (email: string) => Promise<void>;
   confirmReset: (password: string) => Promise<void>;
@@ -196,6 +197,37 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
           setLoginStage({ kind: "enroll", challengeToken: result.challengeToken });
         } else {
           setLoginError("Unexpected sign-in response from the server.");
+        }
+      } catch (err) {
+        setLoginError(describeAuthError(err));
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [adoptSession],
+  );
+
+  const loginWithGoogle = useCallback(
+    async (googleIdToken: string) => {
+      setIsSubmitting(true);
+      setLoginError(null);
+      try {
+        const result = await api.loginWithGoogle(googleIdToken);
+        if (result.status === "authenticated") {
+          adoptSession(result);
+        } else if (result.status === "2fa_required" && result.challengeToken) {
+          setLoginStage({ kind: "twoFactor", challengeToken: result.challengeToken });
+        } else if (result.status === "mfa_enroll_required" && result.challengeToken) {
+          setLoginStage({ kind: "enroll", challengeToken: result.challengeToken });
+        } else if (result.status === "google_verified" && result.challengeToken) {
+          // Google identity verified — still needs TOTP (same as 2fa_required)
+          setLoginStage({ kind: "twoFactor", challengeToken: result.challengeToken });
+        } else if (result.status === "google_account_not_found") {
+          setLoginError(result.message ?? "Your Google account is not registered with Signova. Contact your administrator.");
+        } else if (result.status === "google_unverified") {
+          setLoginError(result.message ?? "This account is inactive. Contact your administrator.");
+        } else {
+          setLoginError(result.message ?? "Google sign-in failed. Please try again.");
         }
       } catch (err) {
         setLoginError(describeAuthError(err));
@@ -393,6 +425,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     startStaffSetup,
     confirmStaffSetup,
     cancelStaffSetup,
+    loginWithGoogle,
   }), [
     user,
     isLoading,

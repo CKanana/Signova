@@ -26,7 +26,14 @@ export function TabletShell({ children }: TabletShellProps) {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle={step === "welcome" || step === "method" ? "light-content" : "dark-content"}
-        backgroundColor={step === "splash" ? theme.colors.primary : "#241F27"}
+      />
+      <View
+        style={[
+          styles.statusBarOverlay,
+          step === "splash"
+            ? { backgroundColor: theme.colors.primary }
+            : { backgroundColor: "#241F27" },
+        ]}
       />
 
       <View style={[styles.outerContainer, isTablet && styles.outerContainerTablet]}>

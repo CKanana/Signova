@@ -1,5 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useAdminAuth } from "../context/AdminAuthContext";
+import { useToast } from "../context/ToastContext";
 import { adminApi, ApiError } from "../services/api";
 import type { AdminUserSummary, Role } from "../types/admin";
 import {
@@ -27,10 +28,10 @@ import {
 
 export function Staff() {
   const { user: currentAdmin } = useAdminAuth();
+  const { success, error: toastError, warning } = useToast();
   const [staff, setStaff] = useState<AdminUserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: "success" | "danger" | "warning"; message: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -106,10 +107,9 @@ export function Staff() {
       // 400 and the account is rolled back, so we surface the real error instead
       // of claiming "Invitation sent" when the user never received a link.
       if (res.invitation) {
-        setFeedback({ type: "success", message: `Staff account created for ${createName}. Invitation email sent — check your inbox (including spam).` });
+        success(`Staff account created for ${createName}. Invitation email sent.`);
       } else {
-        // Account created but no invitation (e.g. SMTP down) — tell the admin honestly.
-        setFeedback({ type: "warning", message: `Staff account created for ${createName}. An invitation email could not be sent (mail transport unavailable). Use "Resend invite" once SMTP is fixed.` });
+        warning(`Staff account created for ${createName}. Invitation email could not be sent — SMTP may be down.`);
       }
       setIsCreateOpen(false);
       setCreateName("");
@@ -132,28 +132,22 @@ export function Staff() {
       if (confirmAction === "activate" || confirmAction === "deactivate") {
         const nextActive = confirmAction === "activate";
         await adminApi.setStaffStatus(targetStaff.id, nextActive);
-        setFeedback({
-          type: "success",
-          message: `${targetStaff.name} is now ${nextActive ? "activated" : "deactivated"}.`,
-        });
+        success(`${targetStaff.name} is now ${nextActive ? "activated" : "deactivated"}.`);
       } else if (confirmAction === "reset2fa") {
         await adminApi.resetStaff2FA(targetStaff.id);
-        setFeedback({
-          type: "success",
-          message: `2FA reset for ${targetStaff.name}. They will re-enroll upon their next login.`,
-        });
+        success(`2FA reset for ${targetStaff.name}. They will re-enroll on next login.`);
       }
       setTargetStaff(null);
       setConfirmAction(null);
       loadStaff();
     } catch (err: any) {
-      setFeedback({ type: "danger", message: err?.message ?? "Action failed." });
+      toastError(err?.message ?? "Action failed.");
     } finally {
       setActionLoading(false);
     }
   };
 
-  const resendInviteFor = async (s: any) => {
+  const resendInviteFor = async (s: AdminUserSummary) => {
     if (resendLoading[s.id]) return;
     setResendLoading((prev) => ({ ...prev, [s.id]: true }));
     setResendErrors((prev) => ({ ...prev, [s.id]: null }));
@@ -163,11 +157,11 @@ export function Staff() {
       setStaff((prev) =>
         prev.map((x) => (x.id === s.id ? { ...x } : x))
       );
-      setFeedback({ type: "success", message: `Resent the setup email for ${s.name}. Check your inbox (including spam).` });
+      success(`Setup email resent to ${s.name}. Ask them to check their inbox (including spam).`);
     } catch (err: any) {
       // 404/400 => no pending invitation (already accepted or expired).
       setResendErrors((prev) => ({ ...prev, [s.id]: err?.message ?? "Not available for this staff member." }));
-      setFeedback({ type: "warning", message: err?.message ?? "No pending invitation to resend." });
+      warning(err?.message ?? "No pending invitation to resend.");
     } finally {
       setResendLoading((prev) => ({ ...prev, [s.id]: false }));
     }
@@ -187,12 +181,6 @@ export function Staff() {
           </Button>
         }
       />
-
-      {feedback && (
-        <Alert variant={feedback.type} onClose={() => setFeedback(null)}>
-          {feedback.message}
-        </Alert>
-      )}
 
       {error && (
         <Alert variant="danger" title="Error Loading Staff">
@@ -387,10 +375,10 @@ export function Staff() {
                             {!isSelf && !s.twoFactorEnabled && (
                               <button
                                 className="admin-btn admin-btn--ghost admin-btn--sm"
-                                onClick={() => resendInviteFor(s.id)}
+                                onClick={() => resendInviteFor(s)}
                                 disabled={resendLoading[s.id]}
                               >
-                                {resendLoading[s.id] ? "Resending…" : pendingInvites[s.id] ? "Resent" : "Resend Setup Email"}
+                                {resendLoading[s.id] ? "Resending…" : pendingInvites[s.id] ? "Resent ✓" : "Resend Setup Email"}
                               </button>
                             )}
                           </>

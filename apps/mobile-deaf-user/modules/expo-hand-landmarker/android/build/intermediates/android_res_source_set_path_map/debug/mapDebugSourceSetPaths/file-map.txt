@@ -1,0 +1,9 @@
+expo.modules.handlandmarker.expo-hand-landmarker-pngs-0 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\build\generated\res\pngs\debug
+expo.modules.handlandmarker.expo-hand-landmarker-updated_navigation_xml-1 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\build\generated\updated_navigation_xml\debug
+expo.modules.handlandmarker.expo-hand-landmarker-mergeDebugResources-2 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\build\intermediates\incremental\debug\mergeDebugResources\merged.dir
+expo.modules.handlandmarker.expo-hand-landmarker-mergeDebugResources-3 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\build\intermediates\incremental\debug\mergeDebugResources\stripped.dir
+expo.modules.handlandmarker.expo-hand-landmarker-debug-4 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\build\intermediates\merged_res\debug\mergeDebugResources
+expo.modules.handlandmarker.expo-hand-landmarker-debug-5 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\build\intermediates\packaged_res\debug\packageDebugResources
+expo.modules.handlandmarker.expo-hand-landmarker-debug-6 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\src\debug\res
+expo.modules.handlandmarker.expo-hand-landmarker-main-7 C:\Users\kanan\OneDrive\Desktop\Signova\apps\mobile-deaf-user\modules\expo-hand-landmarker\android\src\main\res
+gradleHome-0 C:\Users\kanan\.gradle
