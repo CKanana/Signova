@@ -3,6 +3,8 @@
 // Mobile → Server
 export const C2S = {
   SESSION_JOIN: "session:join",
+  SESSION_ACCEPT: "session:accept",
+  SESSION_REJECT: "session:reject",
   MESSAGE_SEND: "message:send",
   SESSION_END: "session:end",
 } as const;
@@ -10,6 +12,8 @@ export const C2S = {
 // Server → Mobile (Deaf user)
 export const S2C_MOBILE = {
   SESSION_CONNECTED: "session:connected",
+  SESSION_ACTIVE: "session:active",
+  SESSION_REJECTED: "session:rejected",
   STAFF_MESSAGE: "staff:message",
   SESSION_ENDED: "session:ended",
   ERROR: "error",

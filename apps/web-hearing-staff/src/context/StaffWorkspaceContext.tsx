@@ -88,6 +88,7 @@ interface StaffWorkspaceValue {
   endActiveSession: () => Promise<void>;
   resetToDashboard: () => void;
   reloadWorkspace: () => Promise<void>;
+  restoreCurrentSession: () => Promise<void>;
 
   // Errors
   error: string | null;
@@ -142,6 +143,13 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Refs so restoreCurrentSession can read latest tellers/user without
+  // being recreated (and thus causing effect loops) on every render.
+  const tellersRef = useRef(tellers);
+  const userRef = useRef(user);
+  tellersRef.current = tellers;
+  userRef.current = user;
+
   const activeSessionId = view.kind === "active" ? view.session._id : null;
   const clearError = useCallback(() => setError(null), []);
 
@@ -188,12 +196,6 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     await Promise.all([loadOrganization(), loadTellers()]);
   }, [loadOrganization, loadTellers]);
 
-  // Load org + tellers once authenticated.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    void reloadWorkspace();
-  }, [isAuthenticated, reloadWorkspace]);
-
   /* ------------------------------------------------------------------ */
   /* Socket wiring                                                       */
   /* ------------------------------------------------------------------ */
@@ -214,11 +216,11 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     connectStaffSocket(token, {
       onConnectionChange: (state) => setConnection(state),
       onSessionRequest: (payload) => {
-        // Only surface the request if we're idle (no active session).
+        // Surface the request for the dashboard banner regardless of view.
+        setPendingRequest(payload);
+        // Only transition the view if we're idle (no active session).
         setView((current) => {
           if (current.kind === "idle") {
-            setPendingRequest(payload);
-
             // Fire a browser notification so the staff member is alerted
             // even if they're on another tab.
             try {
@@ -262,7 +264,7 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
             ? existing.map((m) => (m === optimistic ? { ...wireToUi(message) } : m))
             : [...existing, wireToUi(message)];
           commitMessages(message.sessionId, next);
-          return current;
+          return { ...current, messages: next };
         });
       },
       onTranslationLow: (payload) => {
@@ -341,6 +343,50 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     [commitMessages],
   );
 
+  /**
+   * Restore the staff member's current session on initialization / reload.
+   *
+   * If an ACTIVE session exists for the assigned teller, load it into view
+   * (with messages) so the "Return to Session" action works. If a
+   * CONNECTING request exists, restore it as the pending request. All state
+   * comes from the backend — never from localStorage or component state.
+   */
+  const restoreCurrentSession = useCallback(async () => {
+    if (!isAuthenticated) return;
+    const teller = tellersRef.current.find((t) => t.staffUser === userRef.current?.id);
+    if (!teller) return;
+
+    const tellerId = typeof teller._id === "string" ? teller._id : String(teller._id);
+
+    // Prefer an active session over a pending request.
+    try {
+      const { sessions: activeSessions } = await api.listSessions({ tellerId, status: "ACTIVE" });
+      if (activeSessions.length > 0) {
+        await loadSessionIntoView(activeSessions[0]._id);
+        return;
+      }
+
+      const { sessions: pending } = await api.listSessions({ tellerId, status: "CONNECTING" });
+      if (pending.length > 0) {
+        const s = pending[0];
+        const payload: SessionRequestPayload = {
+          sessionId: s._id,
+          tellerId: typeof s.teller === "string" ? s.teller : String(s.teller._id),
+          method: s.method,
+          startedAt: s.startedAt,
+        };
+        setPendingRequest(payload);
+        setView({
+          kind: "request",
+          request: payload,
+          receivedAt: s.startedAt,
+        });
+      }
+    } catch (err) {
+      setError(describeError(err, "Could not restore your session."));
+    }
+  }, [isAuthenticated, loadSessionIntoView]);
+
   const acceptRequest = useCallback(async () => {
     if (!pendingRequest) return;
     await loadSessionIntoView(pendingRequest.sessionId);
@@ -350,6 +396,15 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     setPendingRequest(null);
     setView({ kind: "idle" });
   }, []);
+
+  // Load org + tellers once authenticated, then restore any current session.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    (async () => {
+      await reloadWorkspace();
+      await restoreCurrentSession();
+    })();
+  }, [isAuthenticated, reloadWorkspace, restoreCurrentSession]);
 
   const sendReply = useCallback(
     async (text: string) => {
@@ -471,6 +526,7 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
       endActiveSession,
       resetToDashboard,
       reloadWorkspace,
+      restoreCurrentSession,
       error,
       clearError,
       isSending,
@@ -499,6 +555,7 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
       endActiveSession,
       resetToDashboard,
       reloadWorkspace,
+      restoreCurrentSession,
       error,
       clearError,
       isSending,

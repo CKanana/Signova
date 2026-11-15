@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createSessionHandler, currentSessionHandler, getSessionHandler, listSessionsHandler, updateSessionStatusHandler, } from "../controllers/sessionController.js";
+import { createSessionHandler, currentSessionHandler, getSessionHandler, listSessionsHandler, updateSessionStatusHandler, acceptSessionHandler, rejectSessionHandler, } from "../controllers/sessionController.js";
 import { requireAuth } from "../middleware/auth.js";
 const router = Router();
 router.use(requireAuth);
@@ -8,4 +8,6 @@ router.get("/current", currentSessionHandler);
 router.get("/", listSessionsHandler);
 router.get("/:id", getSessionHandler);
 router.patch("/:id/status", updateSessionStatusHandler);
+router.post("/:id/accept", acceptSessionHandler);
+router.post("/:id/reject", rejectSessionHandler);
 export default router;

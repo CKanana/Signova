@@ -2,7 +2,9 @@ import { Server as SocketServer } from "socket.io";
 import { verifyAccessToken } from "../utils/jwt.js";
 import { NAMESPACE } from "./events.js";
 import { registerSocketHandlers } from "./rooms.js";
-import { orgTellersRoom, S2C_STAFF } from "./events.js";
+import { sessionRoom, orgTellersRoom, userRoom, S2C_STAFF } from "./events.js";
+import { Teller } from "../models/teller.js";
+import { S2C_MOBILE } from "./events.js";
 let io = null;
 /**
  * Initialize the Socket.IO server on the /signova namespace.
@@ -38,16 +40,91 @@ export function getIO() {
         throw new Error("Realtime not initialized");
     return io;
 }
-/** Emit a new-session request to a teller's org room (staff dashboards). */
+/** Emit a new-session request only to the teller's assigned staff member.
+ * Falls back to the whole org tellers room if no staff is assigned,
+ * so admin dashboards always see incoming requests. */
 export async function emitSessionRequest(orgId, session) {
     if (!io)
         return;
-    io.of(NAMESPACE)
-        .to(orgTellersRoom(orgId))
-        .emit(S2C_STAFF.SESSION_REQUEST, {
+    const payload = {
         sessionId: session._id.toString(),
         tellerId: session.teller.toString(),
         method: session.method,
         startedAt: session.startedAt.toISOString(),
-    });
+    };
+    // Look up the teller to find the assigned staff member.
+    const teller = await Teller.findOne({
+        _id: session.teller,
+        organization: orgId,
+    }).select("staffUser").lean();
+    const namespace = io.of(NAMESPACE);
+    if (teller?.staffUser) {
+        // Route directly to the assigned staff member's personal room.
+        // This ensures only the right person gets the notification popup.
+        namespace
+            .to(userRoom(teller.staffUser.toString()))
+            .emit(S2C_STAFF.SESSION_REQUEST, payload);
+    }
+    else {
+        // No staff assigned — broadcast to all staff in the org so someone
+        // can pick it up (e.g. admin or unassigned counter situation).
+        namespace
+            .to(orgTellersRoom(orgId))
+            .emit(S2C_STAFF.SESSION_REQUEST, payload);
+    }
+}
+/** Notify both parties that a session is now ACTIVE.
+ *
+ * Persisted state (acceptSession) is committed by the caller before this
+ * is emitted. Emits to:
+ *  - the accepting staff member's personal room (targeted ack)
+ *  - the org tellers room (all staff dashboards in the org)
+ *  - the session room (the Deaf user, once joined via session:join)
+ */
+export async function emitSessionActive(orgId, session, staffUserId) {
+    if (!io)
+        return;
+    const namespace = io.of(NAMESPACE);
+    const payload = {
+        sessionId: session._id.toString(),
+        tellerId: session.teller.toString(),
+        status: "ACTIVE",
+    };
+    if (staffUserId) {
+        namespace.to(userRoom(staffUserId)).emit(S2C_STAFF.SESSION_ACTIVE, payload);
+    }
+    namespace.to(orgTellersRoom(orgId)).emit(S2C_STAFF.SESSION_ACTIVE, payload);
+    namespace.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_ACTIVE, payload);
+}
+/** Notify the Deaf user that their request was rejected.
+ *
+ * Persisted state (rejectSession) is committed by the caller before this
+ * is emitted. Emits to the session room; a Deaf user who joins later
+ * retrieves authoritative state via GET /api/sessions/current. */
+export async function emitSessionRejected(orgId, session) {
+    if (!io)
+        return;
+    const namespace = io.of(NAMESPACE);
+    const payload = {
+        sessionId: session._id.toString(),
+        status: "CANCELLED",
+    };
+    namespace.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_REJECTED, payload);
+}
+/** Notify both parties that a session has ended.
+ *
+ * Persisted state (updateSessionStatus → ENDED) is committed by the caller
+ * before this is emitted. Emits to:
+ *  - the session room (the Deaf user, once joined via session:join)
+ *  - the org tellers room (all staff dashboards in the org) */
+export async function emitSessionEnded(orgId, session) {
+    if (!io)
+        return;
+    const namespace = io.of(NAMESPACE);
+    const payload = {
+        sessionId: session._id.toString(),
+        status: "ENDED",
+    };
+    namespace.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_ENDED, payload);
+    namespace.to(orgTellersRoom(orgId)).emit(S2C_STAFF.SESSION_ENDED, payload);
 }

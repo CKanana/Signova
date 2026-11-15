@@ -2,10 +2,10 @@ import { Session } from "../models/session.js";
 import { SessionLog } from "../models/sessionLog.js";
 import { Teller } from "../models/teller.js";
 import { User } from "../models/user.js";
-import { NotFoundError, BadRequestError, ConflictError } from "../utils/errors.js";
+import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from "../utils/errors.js";
 import { recordAudit } from "./auditService.js";
 import type { Types } from "mongoose";
-import type { CommunicationMethod, SessionEndReason } from "../../../shared/types/translation.js";
+import type { CommunicationMethod, Role, SessionEndReason } from "../../../shared/types/translation.js";
 
 /** Accept both the mongoose runtime ObjectId and the schema-declared
  * Schema.Types.ObjectId, or a hex string. All three are valid _id values.
@@ -28,7 +28,8 @@ export function releaseLease(sessionId: string): void {
   activeLeases.delete(sessionId);
 }
 
-/** Ticker-aware availability read: checks the DB + the live lease set. */
+/** Ticker-aware availability read: checks the DB + the live lease set.
+ * A teller holding a pending request (RESERVED) counts as unavailable. */
 export async function tellerHasActiveSession(
   orgId: ObjectIdLike,
   tellerId: ObjectIdLike
@@ -42,13 +43,14 @@ export async function tellerHasActiveSession(
 }
 
 /**
- * Atomically reserve a teller for a new session.
+ * Atomically reserve a teller for a new session request.
  *
- * The update condition `{ status: "FREE" }` means the teller is only
- * claimed if it is currently FREE. Returns the claimed teller (status
- * BUSY) or null if the reservation failed because the teller is not
- * FREE (another request won the race). This is a single atomic
- * MongoDB operation — no read-then-write TOCTOU race.
+ * The teller moves FREE → RESERVED (not BUSY): a reservation holds the
+ * counter while the request awaits explicit acceptance, but the teller is
+ * not yet in a session. The update condition `{ status: "FREE" }` means
+ * the teller is only claimed if currently FREE — a single atomic MongoDB
+ * operation, no read-then-write TOCTOU race. Returns the claimed teller
+ * or null if another request won the race.
  */
 export async function reserveTeller(
   orgId: ObjectIdLike,
@@ -56,7 +58,7 @@ export async function reserveTeller(
 ): Promise<import("../models/teller.js").ITeller | null> {
   return Teller.findOneAndUpdate(
     { _id: tellerId, organization: orgId, status: "FREE" },
-    { $set: { status: "BUSY" } },
+    { $set: { status: "RESERVED" } },
     { new: true }
   );
 }
@@ -67,7 +69,7 @@ export async function releaseTeller(
   tellerId: ObjectIdLike
 ): Promise<import("../models/teller.js").ITeller | null> {
   return Teller.findOneAndUpdate(
-    { _id: tellerId, organization: orgId, status: "BUSY" },
+    { _id: tellerId, organization: orgId, status: "RESERVED" },
     { $set: { status: "FREE" } },
     { new: true }
   );
@@ -114,14 +116,16 @@ async function ensureDeafUser(orgId: ObjectIdLike, deviceId: string): Promise<Ob
 }
 
 /**
- * Create a new session for a Deaf user pairing with a teller.
+ * Create a new session request for a Deaf user pairing with a teller.
  *
- * Reservation is atomic: the teller is claimed with a single
- * findOneAndUpdate whose condition requires status FREE. On failure the
- * teller is released back to FREE within the same function, so a
- * rejected session never leaves the teller stuck BUSY. Live leases
- * track the reservation in-process; the authoritative state is the
- * teller's status field in MongoDB.
+ * The request is left pending (status CONNECTING) and the teller is
+ * claimed RESERVED — not BUSY: the counter is held while the request
+ * awaits explicit acceptance or rejection, but no session is in progress
+ * yet. Reservation is atomic: a single findOneAndUpdate whose condition
+ * requires status FREE. On failure the teller is released back to FREE
+ * within the same function, so a rejected session never leaves the
+ * teller stuck RESERVED. Live leases track the reservation in-process;
+ * the authoritative state is the teller's status field in MongoDB.
  */
 export async function createSession(
   orgId: ObjectIdLike,
@@ -166,15 +170,133 @@ export async function createSession(
     return session;
   } catch (err) {
     // Roll back the reservation so a failed creation does not leave the
-    // teller permanently BUSY.
+    // teller permanently RESERVED.
     await releaseTeller(orgId, teller._id);
     releaseLease(sessionId);
     throw err;
   }
 }
 
+/**
+ * Server-controlled acceptance of a pending session request.
+ *
+ * Preconditions (all enforced here, server-side):
+ *  - the session exists and belongs to the organization;
+ *  - the session's teller belongs to the same organization;
+ *  - the actor is an ADMIN of the organization, or the STAFF user assigned
+ *    to that teller (session.teller.staffUser === actor.sub);
+ *  - the session is still pending (CONNECTING).
+ *
+ * Transition: session CONNECTING → ACTIVE, teller RESERVED → BUSY.
+ * Idempotent: accepting an already-ACTIVE session is a no-op success.
+ * Safe: accepting a CANCELLED or ENDED session is a conflict, not a
+ * state change. An unrelated teller/staff member cannot accept another
+ * teller's request.
+ */
+export async function acceptSession(
+  orgId: ObjectIdLike,
+  sessionId: string,
+  actor: { role: Role; sub: string },
+): Promise<import("../models/session.js").ISession> {
+  const session = await Session.findOne({ _id: sessionId, organization: orgId });
+  if (!session) throw new NotFoundError("Session request not found");
+
+  const teller = await Teller.findOne({ _id: session.teller, organization: orgId });
+  if (!teller) throw new NotFoundError("Teller not found");
+
+  if (actor.role === "STAFF") {
+    if (!teller.staffUser || teller.staffUser.toString() !== actor.sub) {
+      throw new ForbiddenError("You are not assigned to this teller's request");
+    }
+  } else if (actor.role !== "ADMIN") {
+    throw new ForbiddenError("Only staff or administrators can accept session requests");
+  }
+
+  if (session.status === "ACTIVE") return session; // repeat accept is idempotent
+  if (session.status === "CANCELLED" || session.status === "ENDED") {
+    throw new ConflictError("Session request has already been resolved");
+  }
+
+  const activated = await Session.findOneAndUpdate(
+    { _id: sessionId, organization: orgId, teller: teller._id, status: "CONNECTING" },
+    { $set: { status: "ACTIVE" } },
+    { new: true },
+  );
+  if (!activated) {
+    // Lost the race or already resolved — re-read to report precisely.
+    const current = await Session.findOne({ _id: sessionId, organization: orgId });
+    if (!current) throw new NotFoundError("Session request not found");
+    if (current.status === "ACTIVE") return current; // another acceptor won — idempotent
+    throw new ConflictError("Session request is no longer pending");
+  }
+
+  const claimed = await Teller.findOneAndUpdate(
+    { _id: teller._id, organization: orgId, status: "RESERVED" },
+    { $set: { status: "BUSY" } },
+    { new: true },
+  );
+  if (!claimed) {
+    await logSessionEvent(session._id, orgId, "session_accepted", {
+      warning: "teller reservation missing",
+    });
+    return activated;
+  }
+
+  await logSessionEvent(session._id, orgId, "session_accepted");
+  return activated;
+}
+
+/**
+ * Server-controlled rejection of a pending session request.
+ *
+ * Preconditions mirror acceptSession. Transition: session CONNECTING →
+ * CANCELLED, teller RESERVED → FREE.
+ * Idempotent: rejecting an already-CANCELLED session is a no-op success.
+ * Safe: rejecting an ACTIVE or ENDED session is a conflict.
+ */
+export async function rejectSession(
+  orgId: ObjectIdLike,
+  sessionId: string,
+  actor: { role: Role; sub: string },
+): Promise<import("../models/session.js").ISession | null> {
+  const session = await Session.findOne({ _id: sessionId, organization: orgId });
+  if (!session) throw new NotFoundError("Session request not found");
+
+  const teller = await Teller.findOne({ _id: session.teller, organization: orgId });
+  if (!teller) throw new NotFoundError("Teller not found");
+
+  if (actor.role === "STAFF") {
+    if (!teller.staffUser || teller.staffUser.toString() !== actor.sub) {
+      throw new ForbiddenError("You are not assigned to this teller's request");
+    }
+  } else if (actor.role !== "ADMIN") {
+    throw new ForbiddenError("Only staff or administrators can reject session requests");
+  }
+
+  if (session.status === "CANCELLED") return session; // repeat reject is idempotent
+  if (session.status === "ACTIVE" || session.status === "ENDED") {
+    throw new ConflictError("Cannot reject an active or ended session");
+  }
+
+  const cancelled = await Session.findOneAndUpdate(
+    { _id: sessionId, organization: orgId, teller: teller._id, status: "CONNECTING" },
+    { $set: { status: "CANCELLED" } },
+    { new: true },
+  );
+  if (!cancelled) {
+    const current = await Session.findOne({ _id: sessionId, organization: orgId });
+    if (!current) throw new NotFoundError("Session request not found");
+    if (current.status === "CANCELLED") return current; // another rejector won — idempotent
+    throw new ConflictError("Session request is no longer pending");
+  }
+
+  await releaseTeller(orgId, teller._id);
+  await logSessionEvent(session._id, orgId, "session_rejected");
+  return cancelled;
+}
+
 export async function getCurrentSessionForDevice(orgId: ObjectIdLike, deviceId: string) {
-  const deafUser = await User.findOne({ organization: orgId, role: "DEAF_USER", phone: deviceId });
+  const deafUser = await User.findOne({ organization: orgId, role: "DEAF_USER", _id: deviceId });
   if (!deafUser) return null;
   return Session.findOne({
     organization: orgId,
@@ -247,13 +369,17 @@ export async function incrementMessageCount(sessionId: Types.ObjectId | string) 
 /**
  * Reconcile teller statuses on server startup (or on-demand).
  *
- * Finds every teller marked BUSY that has no CONNECTING or ACTIVE session,
- * and resets them to FREE. This repairs any tellers stuck BUSY due to
- * crashes, ungraceful shutdowns, or missed session:end events.
+ * Finds every teller marked BUSY or RESERVED that has no CONNECTING or
+ * ACTIVE session, and resets them to FREE. This repairs any tellers stuck
+ * BUSY/RESERVED due to crashes, ungraceful shutdowns, or missed
+ * session:end / reject events. A teller with a live CONNECTING session is
+ * left alone — its request is still pending.
  */
 export async function reconcileStuckTellers(): Promise<number> {
-  // Find all tellers currently marked BUSY.
-  const busyTellers = await Teller.find({ status: "BUSY" }).select("_id organization").lean();
+  // Find all tellers currently marked BUSY or RESERVED.
+  const busyTellers = await Teller.find({ status: { $in: ["BUSY", "RESERVED"] } })
+    .select("_id organization")
+    .lean();
   if (busyTellers.length === 0) return 0;
 
   const busyIds = busyTellers.map((t) => t._id);
@@ -268,7 +394,7 @@ export async function reconcileStuckTellers(): Promise<number> {
 
   const activeTellerIds = new Set(activeSessions.map((s) => s.teller.toString()));
 
-  // Any BUSY teller with no live session is stuck — free them.
+  // Any BUSY/RESERVED teller with no live session is stuck — free them.
   const stuckIds = busyIds.filter((id) => !activeTellerIds.has(id.toString()));
   if (stuckIds.length === 0) return 0;
 

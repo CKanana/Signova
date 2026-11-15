@@ -2,7 +2,7 @@ import { Teller } from "../models/teller.js";
 import { NotFoundError, ConflictError, BadRequestError } from "../utils/errors.js";
 import type { Types } from "mongoose";
 import type { TellerStatus } from "../../../shared/types/translation.js";
-import { reserveTeller, releaseTeller } from "./sessionService.js";
+import { releaseTeller } from "./sessionService.js";
 
 export async function listTellers(orgId: string | Types.ObjectId) {
   return Teller.find({ organization: orgId }).sort({ counterNumber: 1 });
@@ -47,12 +47,18 @@ export async function updateTellerAvailability(
   status: TellerStatus,
 ): Promise<import("../models/teller.js").ITeller> {
   if (status === "BUSY") {
-    const booked = await reserveTeller(orgId, tellerId);
+    // Explicit admin availability change: mark BUSY directly (a session
+    // request, by contrast, reserves the teller as RESERVED first).
+    const booked = await Teller.findOneAndUpdate(
+      { _id: tellerId, organization: orgId, status: "FREE" },
+      { $set: { status: "BUSY" } },
+      { new: true },
+    );
     if (!booked) throw new ConflictError("Teller is currently in a session");
     return booked;
   }
-  // FREE / OFFLINE: release any live BUSY lease if present; do not
-  // error when the teller is already FREE/ONLINE.
+  // FREE / OFFLINE: release any live RESERVED lease if present; do not
+  // error when the teller is already FREE/OFFLINE.
   await releaseTeller(orgId, tellerId);
   // Confirm the teller still exists (or the org-scoped query resolves it).
   const teller = await Teller.findById(tellerId);

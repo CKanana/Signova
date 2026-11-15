@@ -18,7 +18,7 @@ export interface Organisation {
   isActive: boolean;
 }
 
-export type TellerAvailability = "FREE" | "BUSY" | "OFFLINE";
+export type TellerAvailability = "FREE" | "RESERVED" | "BUSY" | "OFFLINE";
 
 export interface Teller {
   _id: string;
@@ -34,8 +34,9 @@ export interface SessionRecord {
   _id: string;
   organization: string;
   teller: string;
+  deafUser: string;
   method: CommunicationMethod;
-  status: "CONNECTING" | "ACTIVE" | "ENDED";
+  status: "CONNECTING" | "ACTIVE" | "CANCELLED" | "ENDED";
   pairingCode: string;
   messageCount: number;
   startedAt: string;

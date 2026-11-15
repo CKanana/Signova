@@ -34,6 +34,7 @@ export function DashboardPage({ onOpenSession, onOpenHistory }: DashboardPagePro
     isLoadingOrg,
     isLoadingTellers,
     pendingRequest,
+    view,
     acceptRequest,
     declineRequest,
     isLoadingSession,
@@ -41,6 +42,7 @@ export function DashboardPage({ onOpenSession, onOpenHistory }: DashboardPagePro
   } = useStaffWorkspace();
 
   const teller = assignedTellers[0];
+  const activeSession = view.kind === "active" ? view.session : null;
 
   return (
     <div className="staff-stack">
@@ -54,6 +56,8 @@ export function DashboardPage({ onOpenSession, onOpenHistory }: DashboardPagePro
           onDecline={declineRequest}
           isAccepting={isLoadingSession}
         />
+      ) : activeSession ? (
+        <ActiveSessionCard session={activeSession} onOpen={onOpenSession} />
       ) : (
         <Card>
           <EmptyState
@@ -221,6 +225,41 @@ function IncomingRequestCard({
       </div>
       <p className="staff-field__hint" style={{ marginTop: 10 }}>
         Accepting opens the conversation workspace and connects you to the Deaf user in real time.
+      </p>
+    </section>
+  );
+}
+
+function ActiveSessionCard({ session, onOpen }: { session: any; onOpen: () => void }) {
+  return (
+    <section className="staff-request" aria-live="polite">
+      <div className="staff-request__head">
+        <Badge tone="live" dot pulse>
+          Active
+        </Badge>
+        <h2 className="staff-request__title">Return to Session</h2>
+      </div>
+      <p className="staff-section-lede" style={{ marginBottom: 16 }}>
+        You have an active conversation. Click below to open the session and load its messages.
+      </p>
+      <dl className="staff-kv staff-request__facts">
+        <dt>Session ID</dt>
+        <dd>{session._id}</dd>
+        <dt>Communication method</dt>
+        <dd>{session.method === "sign" ? "Sign language" : "Typed message"}</dd>
+        <dt>Started at</dt>
+        <dd>{formatTime(session.startedAt)}</dd>
+        <dt>Session status</dt>
+        <dd>Active</dd>
+      </dl>
+      <div className="staff-row">
+        <Button onClick={onOpen}>
+          <IconMessage />
+          Return to session
+        </Button>
+      </div>
+      <p className="staff-field__hint" style={{ marginTop: 10 }}>
+        The Deaf user remains connected; opening this session resumes the conversation in real time.
       </p>
     </section>
   );

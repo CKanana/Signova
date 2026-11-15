@@ -1,0 +1,30 @@
+{
+  "name": "@signova/web-deaf-user-pwa",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Signova Deaf-user installable Progressive Web Application (PWA) — React + TypeScript port of the React Native Deaf-user app with on-device ASL recognition.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@litertjs/core": "^2.6.0",
+    "@mediapipe/tasks-vision": "^1.2.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.72.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "socket.io-client": "^4.8.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.2",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}

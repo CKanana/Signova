@@ -20,8 +20,8 @@ export const sendMessageHandler = [
     async (req, res) => {
         const message = await sendMessage(req.auth.orgId, paramId(req), req.body);
         // Broadcast to the session room so the other party receives it in real-time.
-        // USER messages → staff dashboard (message:new)
-        // STAFF messages → mobile app (staff:message)
+        // USER messages -> staff dashboard (message:new)
+        // STAFF messages -> mobile app (staff:message)
         try {
             const io = getIO();
             const sessionId = paramId(req);
@@ -32,7 +32,13 @@ export const sendMessageHandler = [
                 text: message.text,
                 method: message.method,
                 confidence: message.confidence,
-                isConfirmed: message.isConfirmed,
+                // Staff messages are persisted on the server before the broadcast.
+                // Mark them isConfirmed=true for the staff sender's pending-send ack.
+                // This lets the staff dashboard's client resolve its send promise as
+                // soon as the server persists and rebroadcasts the message (the staff
+                // socket is not in the session room, so its own message:new broadcast
+                // would otherwise never reach it).
+                isConfirmed: message.sender === "STAFF" ? true : message.isConfirmed,
                 timestamp: message.timestamp.toISOString(),
             };
             // Broadcast to the session room so the other party receives it in

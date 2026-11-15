@@ -6,6 +6,7 @@ import { registerSocketHandlers } from "./rooms.js";
 import { sessionRoom, orgTellersRoom, userRoom, S2C_STAFF } from "./events.js";
 import { Session } from "../models/session.js";
 import { Teller } from "../models/teller.js";
+import { S2C_MOBILE } from "./events.js";
 
 let io: SocketServer | null = null;
 
@@ -80,4 +81,64 @@ export async function emitSessionRequest(orgId: string, session: any): Promise<v
       .to(orgTellersRoom(orgId))
       .emit(S2C_STAFF.SESSION_REQUEST, payload);
   }
+}
+
+/** Notify both parties that a session is now ACTIVE.
+ *
+ * Persisted state (acceptSession) is committed by the caller before this
+ * is emitted. Emits to:
+ *  - the accepting staff member's personal room (targeted ack)
+ *  - the org tellers room (all staff dashboards in the org)
+ *  - the session room (the Deaf user, once joined via session:join)
+ */
+export async function emitSessionActive(
+  orgId: string,
+  session: any,
+  staffUserId?: string,
+): Promise<void> {
+  if (!io) return;
+  const namespace = io.of(NAMESPACE);
+  const payload = {
+    sessionId: session._id.toString(),
+    tellerId: session.teller.toString(),
+    status: "ACTIVE",
+  };
+
+  if (staffUserId) {
+    namespace.to(userRoom(staffUserId)).emit(S2C_STAFF.SESSION_ACTIVE, payload);
+  }
+  namespace.to(orgTellersRoom(orgId)).emit(S2C_STAFF.SESSION_ACTIVE, payload);
+  namespace.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_ACTIVE, payload);
+}
+
+/** Notify the Deaf user that their request was rejected.
+ *
+ * Persisted state (rejectSession) is committed by the caller before this
+ * is emitted. Emits to the session room; a Deaf user who joins later
+ * retrieves authoritative state via GET /api/sessions/current. */
+export async function emitSessionRejected(orgId: string, session: any): Promise<void> {
+  if (!io) return;
+  const namespace = io.of(NAMESPACE);
+  const payload = {
+    sessionId: session._id.toString(),
+    status: "CANCELLED",
+  };
+  namespace.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_REJECTED, payload);
+}
+
+/** Notify both parties that a session has ended.
+ *
+ * Persisted state (updateSessionStatus → ENDED) is committed by the caller
+ * before this is emitted. Emits to:
+ *  - the session room (the Deaf user, once joined via session:join)
+ *  - the org tellers room (all staff dashboards in the org) */
+export async function emitSessionEnded(orgId: string, session: any): Promise<void> {
+  if (!io) return;
+  const namespace = io.of(NAMESPACE);
+  const payload = {
+    sessionId: session._id.toString(),
+    status: "ENDED",
+  };
+  namespace.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_ENDED, payload);
+  namespace.to(orgTellersRoom(orgId)).emit(S2C_STAFF.SESSION_ENDED, payload);
 }

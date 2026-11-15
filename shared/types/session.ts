@@ -3,6 +3,7 @@ export type Step =
   | "welcome"
   | "method"
   | "tellers"
+  | "waiting"
   | "text"
   | "connecting"
   | "permission"
@@ -77,7 +78,11 @@ export interface SessionContextValue {
   confidence: number;
   isHandsDetected: boolean;
   isConnected: boolean;
+  sessionStatus: "CONNECTING" | "ACTIVE" | "CANCELLED" | "ENDED" | null;
+  sessionOwnerId: string | null;
   staff: StaffInfo;
+  joinedTellerId: string | null;
+  joinedAt: number | null;
   organisation: OrganisationInfo;
   accessibility: AccessibilitySettings;
 
@@ -117,5 +122,20 @@ export interface SessionContextValue {
   recogniseResult: RecogniserResult | null;
   recogniseError: string | null;
   startRecording: () => void;
+  stopRecording: () => void;
+  isRecording: boolean;
   resetRecorder: () => void;
+
+  // On-device hand landmarker (single shared browser instance).
+  // Lives here so the camera screen and session context share one detector
+  // instead of constructing two (which would double frame processing).
+  isLandmarkerReady: boolean;
+  isLandmarkerInitialising: boolean;
+  landmarkerError: string | null;
+  initialiseLandmarker: () => Promise<void>;
+  destroyLandmarker: () => Promise<void>;
+  processFrame: (videoElement: HTMLVideoElement, timestampMs: number) => void;
+
+  // Session recovery
+  restoreCurrentSession: () => Promise<void>;
 }

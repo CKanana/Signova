@@ -1,0 +1,75 @@
+/* signova.css — design tokens + global base.
+   Tokens are authoritative and shared by every screen/component across the
+   Signova PWA. Covered by signova-tokens.css (imported via main.tsx). */
+
+/* -------------------------------------------------------------------------- */
+/* Landscape tabletop layout (large screens)                                  */
+/* -------------------------------------------------------------------------- */
+@media (min-width: 1440px) {
+  .sn-page-scroll {
+    padding-left: var(--signova-spacing-lg);
+    padding-right: var(--signova-spacing-lg);
+  }
+
+  .sn-action-bar {
+    padding: calc(var(--signova-spacing-xl) + var(--signova-safe-bottom))
+      var(--signova-spacing-xl) var(--signova-safe-bottom);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tablet                                                                   */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .sn-page-scroll--tablet {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile                                                                   */
+/* -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .sn-page-scroll {
+    padding-bottom: calc(var(--signova-spacing-lg) + var(--signova-safe-bottom));
+  }
+
+  .sn-install-banner,
+  .sn-offline-banner {
+    padding-left: var(--signova-spacing-md);
+    padding-right: var(--signova-spacing-md);
+  }
+
+  .sn-header {
+    padding: var(--signova-spacing-sm) var(--signova-spacing-md);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reduction / respect for user preferences                                   */
+/* -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High-contrast: emphasise borders and status. */
+@media (prefers-contrast: high) {
+  .sn-button {
+    border-width: 2px;
+  }
+
+  .sn-status-dot {
+    outline: 2px solid var(--signova-text-strong);
+    outline-offset: 2px;
+  }
+
+  .sn-badge {
+    border-width: 2px;
+  }
+}

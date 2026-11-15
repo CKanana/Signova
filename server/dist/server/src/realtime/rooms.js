@@ -1,7 +1,9 @@
-import { C2S, sessionRoom, orgTellersRoom, S2C_MOBILE, S2C_STAFF } from "./events.js";
-import { ForbiddenError } from "../utils/errors.js";
-import { getSessionById, updateSessionStatus, } from "../services/sessionService.js";
+import { C2S, NAMESPACE, sessionRoom, orgTellersRoom, userRoom, S2C_MOBILE, S2C_STAFF, S2C_STAFF_FROM_SENDER, } from "./events.js";
+import { NotFoundError, ForbiddenError } from "../utils/errors.js";
+import { getSessionById, acceptSession, rejectSession, updateSessionStatus, } from "../services/sessionService.js";
 import { sendMessage } from "../services/messageService.js";
+import { emitSessionActive, emitSessionRejected } from "./gateway.js";
+import { Teller } from "../models/teller.js";
 /**
  * Register Socket.IO event handlers for an authenticated socket.
  * Every handler re-checks organization ownership server-side — a client can
@@ -14,8 +16,11 @@ export function registerSocketHandlers(io, socket) {
         return;
     }
     // Staff/admin join their org's teller room to receive session requests.
+    // They also join their personal user room so targeted notifications reach
+    // only them (e.g. session requests for their assigned teller).
     if (auth.role === "STAFF" || auth.role === "ADMIN") {
         socket.join(orgTellersRoom(auth.orgId));
+        socket.join(userRoom(auth.sub));
     }
     socket.on(C2S.SESSION_JOIN, async (payload) => {
         try {
@@ -27,13 +32,9 @@ export function registerSocketHandlers(io, socket) {
             if (!isOwner)
                 throw new ForbiddenError("Not your session");
             socket.join(sessionRoom(session._id.toString()));
-            if (auth.role === "DEAF_USER" && session.status === "CONNECTING") {
-                await updateSessionStatus(auth.orgId, session._id.toString(), "ACTIVE");
-                // Notify staff room that the session is live.
-                io.to(orgTellersRoom(auth.orgId)).emit(S2C_STAFF.SESSION_ACTIVE, {
-                    sessionId: session._id.toString(),
-                });
-            }
+            // The Deaf user joining the socket room does NOT promote the session:
+            // CONNECTING → ACTIVE happens only when an authorized teller accepts
+            // the request server-side (POST /api/sessions/:id/accept).
             socket.emit(S2C_MOBILE.SESSION_CONNECTED, {
                 sessionId: session._id.toString(),
                 status: session.status,
@@ -43,7 +44,75 @@ export function registerSocketHandlers(io, socket) {
             socket.emit(S2C_MOBILE.ERROR, { message: err.message });
         }
     });
-    socket.on(C2S.MESSAGE_SEND, async (payload) => {
+    socket.on(C2S.SESSION_ACCEPT, async (payload, ack) => {
+        try {
+            const session = await getSessionById(auth.orgId, payload.sessionId);
+            const teller = await Teller.findOne({
+                _id: session.teller,
+                organization: auth.orgId,
+            });
+            if (!teller)
+                throw new NotFoundError("Teller not found");
+            if (auth.role === "STAFF") {
+                if (!teller.staffUser || teller.staffUser.toString() !== auth.sub) {
+                    throw new ForbiddenError("You are not assigned to this teller's request");
+                }
+            }
+            else if (auth.role !== "ADMIN") {
+                throw new ForbiddenError("Only staff or administrators can accept session requests");
+            }
+            const accepted = await acceptSession(auth.orgId, session._id.toString(), {
+                role: auth.role,
+                sub: auth.sub,
+            });
+            await emitSessionActive(auth.orgId, accepted, teller.staffUser?.toString());
+            socket.emit(S2C_STAFF.SESSION_ACTIVE, {
+                sessionId: accepted._id.toString(),
+                status: "ACTIVE",
+            });
+            ack?.({ ok: true, sessionId: accepted._id.toString(), status: "ACTIVE" });
+        }
+        catch (err) {
+            const message = err.message;
+            socket.emit(S2C_MOBILE.ERROR, { message });
+            ack?.({ ok: false, error: message });
+        }
+    });
+    socket.on(C2S.SESSION_REJECT, async (payload, ack) => {
+        try {
+            const session = await getSessionById(auth.orgId, payload.sessionId);
+            const teller = await Teller.findOne({
+                _id: session.teller,
+                organization: auth.orgId,
+            });
+            if (!teller)
+                throw new NotFoundError("Teller not found");
+            if (auth.role === "STAFF") {
+                if (!teller.staffUser || teller.staffUser.toString() !== auth.sub) {
+                    throw new ForbiddenError("You are not assigned to this teller's request");
+                }
+            }
+            else if (auth.role !== "ADMIN") {
+                throw new ForbiddenError("Only staff or administrators can reject session requests");
+            }
+            const cancelled = await rejectSession(auth.orgId, session._id.toString(), {
+                role: auth.role,
+                sub: auth.sub,
+            });
+            await emitSessionRejected(auth.orgId, cancelled);
+            socket.emit(S2C_STAFF.SESSION_ACTIVE, {
+                sessionId: cancelled._id.toString(),
+                status: "CANCELLED",
+            });
+            ack?.({ ok: true, sessionId: cancelled._id.toString(), status: "CANCELLED" });
+        }
+        catch (err) {
+            const message = err.message;
+            socket.emit(S2C_MOBILE.ERROR, { message });
+            ack?.({ ok: false, error: message });
+        }
+    });
+    socket.on(C2S.MESSAGE_SEND, async (payload, ack) => {
         try {
             const session = await getSessionById(auth.orgId, payload.sessionId);
             const sender = auth.role === "DEAF_USER" ? "USER" : "STAFF";
@@ -54,24 +123,41 @@ export function registerSocketHandlers(io, socket) {
                 confidence: payload.confidence,
                 isConfirmed: payload.isConfirmed,
             });
-            // All messages are broadcast as message:new so the staff dashboard
-            // (which listens for message:new) sees user AND its own staff messages.
-            // The mobile app listens for staff:message to receive staff replies.
+            // Broadcast to the session room so the Deaf user receives staff messages
+            // in real-time. Staff-facing new-message events go to the org tellers
+            // room since staff sockets are not in individual session rooms.
             const sessionRoomId = sessionRoom(session._id.toString());
             const messagePayload = serializeMessage(message);
-            io.to(sessionRoomId).emit(S2C_STAFF.MESSAGE_NEW, messagePayload);
             if (message.sender === "STAFF") {
-                io.to(sessionRoomId).emit(S2C_MOBILE.STAFF_MESSAGE, messagePayload);
+                io.of(NAMESPACE).to(sessionRoomId).emit(S2C_MOBILE.STAFF_MESSAGE, messagePayload);
             }
+            io.of(NAMESPACE).to(orgTellersRoom(auth.orgId)).emit(S2C_STAFF.MESSAGE_NEW, messagePayload);
             if (message.sender === "USER" && payload.confidence !== undefined && payload.confidence < 0.6) {
-                io.to(orgTellersRoom(auth.orgId)).emit(S2C_STAFF.TRANSLATION_LOW, {
+                io.of(NAMESPACE).to(orgTellersRoom(auth.orgId)).emit(S2C_STAFF.TRANSLATION_LOW, {
                     sessionId: session._id.toString(),
                     confidence: payload.confidence,
                 });
             }
+            const ackRes = {
+                ok: true,
+                messageId: message._id.toString(),
+                sender: message.sender,
+                isConfirmed: message.sender === "STAFF" ? true : (payload.isConfirmed ?? false),
+            };
+            // Emit legacy events for any listeners that still use them.
+            if (ackRes.isConfirmed) {
+                socket.emit(S2C_STAFF_FROM_SENDER.MESSAGE_ACKED, ackRes);
+            }
+            else {
+                socket.emit(S2C_STAFF_FROM_SENDER.MESSAGE_REJECTED, ackRes);
+            }
+            // Resolve the sender's awaited promise.
+            ack?.(ackRes);
         }
         catch (err) {
-            socket.emit(S2C_MOBILE.ERROR, { message: err.message });
+            const message = err.message;
+            socket.emit(S2C_MOBILE.ERROR, { message });
+            ack?.({ ok: false, error: message });
         }
     });
     socket.on(C2S.SESSION_END, async (payload) => {
@@ -80,12 +166,12 @@ export function registerSocketHandlers(io, socket) {
             const reason = auth.role === "DEAF_USER" ? "USER_ENDED" : "STAFF_ENDED";
             await updateSessionStatus(auth.orgId, session._id.toString(), "ENDED", reason);
             // Notify all session participants (deaf user + staff in the room)
-            io.to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_ENDED, {
+            io.of(NAMESPACE).to(sessionRoom(session._id.toString())).emit(S2C_MOBILE.SESSION_ENDED, {
                 sessionId: session._id.toString(),
                 summary: { messageCount: session.messageCount },
             });
             // Notify the org tellers room so staff dashboards see the teller go FREE
-            io.to(orgTellersRoom(auth.orgId)).emit(S2C_STAFF.SESSION_ENDED, {
+            io.of(NAMESPACE).to(orgTellersRoom(auth.orgId)).emit(S2C_STAFF.SESSION_ENDED, {
                 sessionId: session._id.toString(),
                 tellerId: session.teller.toString(),
             });

@@ -227,7 +227,7 @@ export const methodSelectStyles = StyleSheet.create({
     borderRadius: 30,
     borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.64)",
-    backgroundColor: "transparent",
+    backgroundColor: "#FFF8DC",
   },
   methodCardTablet: {
     minHeight: 270,
@@ -316,7 +316,7 @@ export const methodSelectStyles = StyleSheet.create({
     color: "#FFFFFF",
   },
   textTitle: {
-    color: theme.colors.text,
+    color: "#241F27",
   },
   cardDescription: {
     maxWidth: 400,
@@ -325,10 +325,10 @@ export const methodSelectStyles = StyleSheet.create({
     fontWeight: "600",
   },
   signDescription: {
-    color: "#F8EED4",
+    color: "#FFFFFF",
   },
   textDescription: {
-    color: theme.colors.mutedText,
+    color: "#241F27",
   },
   cardAction: {
     minHeight: 46,
@@ -348,14 +348,14 @@ export const methodSelectStyles = StyleSheet.create({
     backgroundColor: "#F8EED4",
   },
   textAction: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: "#5B2A86",
   },
   cardActionText: {
     fontSize: 16,
     fontWeight: "800",
   },
   signActionText: {
-    color: theme.colors.primary,
+    color: "#5B2A86",
   },
   textActionText: {
     color: "#FFFFFF",

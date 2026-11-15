@@ -298,7 +298,7 @@ export async function assignStaffToTeller(orgId, tellerId, staffUserId, currentU
     const user = await User.findOne({
         _id: staffUserId,
         organization: orgId,
-        role: "STAFF",
+        role: { $in: ["STAFF", "ADMIN"] },
     });
     if (!user)
         throw new NotFoundError("Staff user not found");
@@ -313,17 +313,66 @@ export async function listSessions(orgId, opts) {
     const page = opts.page ?? 1;
     const pageSize = opts.pageSize ?? 100;
     const skip = (page > 0 ? page - 1 : 0) * pageSize;
-    const [items, total] = await Promise.all([
-        Session.find(filter).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
+    const [docs, total] = await Promise.all([
+        Session.find(filter)
+            .populate("teller", "name serviceDesk counterNumber status")
+            .populate("deafUser", "name")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize),
         Session.countDocuments(filter),
     ]);
+    // Serialize to the shape the admin portal expects.
+    const items = docs.map((s) => {
+        const t = s.teller;
+        const d = s.deafUser;
+        return {
+            id: s._id.toString(),
+            organization: s.organization.toString(),
+            teller: t && typeof t === "object" && t._id
+                ? { id: t._id.toString(), name: t.name ?? "Counter", status: t.status }
+                : null,
+            deafUser: d && typeof d === "object" && d._id
+                ? { id: d._id.toString(), name: d.name ?? "Deaf user" }
+                : null,
+            method: s.method,
+            status: s.status,
+            pairingCode: s.pairingCode,
+            startedAt: s.startedAt.toISOString(),
+            endedAt: s.endedAt ? s.endedAt.toISOString() : undefined,
+            endReason: s.endReason,
+            messageCount: s.messageCount,
+            createdAt: s.createdAt ? s.createdAt.toISOString() : s.startedAt.toISOString(),
+        };
+    });
     return { items, total };
 }
 export async function getSession(orgId, sessionId) {
-    const session = await Session.findOne({ _id: sessionId, organization: orgId });
-    if (!session)
+    const s = await Session.findOne({ _id: sessionId, organization: orgId })
+        .populate("teller", "name serviceDesk counterNumber status")
+        .populate("deafUser", "name");
+    if (!s)
         throw new NotFoundError("Session not found");
-    return session;
+    const t = s.teller;
+    const d = s.deafUser;
+    return {
+        id: s._id.toString(),
+        organization: s.organization.toString(),
+        teller: t && typeof t === "object" && t._id
+            ? { id: t._id.toString(), name: t.name ?? "Counter", status: t.status }
+            : null,
+        deafUser: d && typeof d === "object" && d._id
+            ? { id: d._id.toString(), name: d.name ?? "Deaf user" }
+            : null,
+        method: s.method,
+        status: s.status,
+        pairingCode: s.pairingCode,
+        startedAt: s.startedAt.toISOString(),
+        endedAt: s.endedAt ? s.endedAt.toISOString() : undefined,
+        endReason: s.endReason,
+        messageCount: s.messageCount,
+        createdAt: s.createdAt ? s.createdAt.toISOString() : s.startedAt.toISOString(),
+    };
 }
 export async function listAuditLogs(orgId, opts) {
     const filter = { organization: orgId };

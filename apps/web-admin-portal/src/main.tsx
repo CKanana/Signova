@@ -4,6 +4,7 @@ import "../../../shared/constants/web-theme.css";
 import "./styles/admin.css";
 import "./styles/admin-theme.css";
 import "../../../shared/app-shell/src/app-shell.css";
+import "../../../shared/app-shell/src/signova-tokens.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(

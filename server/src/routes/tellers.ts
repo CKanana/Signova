@@ -18,6 +18,6 @@ router.get("/:id", requireAuth, getTellerHandler);
 // availability — enforced server-side by availabilityHandler).
 router.post("/", requireAuth, requireRole("ADMIN"), createTellerHandler);
 router.put("/:id", requireAuth, requireRole("ADMIN"), updateTellerHandler);
-router.patch("/:id/availability", requireAuth, requireRole("ADMIN"), availabilityHandler);
+router.patch("/:id/availability", requireAuth, requireRole("ADMIN", "STAFF"), availabilityHandler);
 
 export default router;

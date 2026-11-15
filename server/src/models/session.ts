@@ -25,7 +25,7 @@ const sessionSchema = new Schema<ISession>(
     teller: { type: Schema.Types.ObjectId, ref: "Teller", required: true },
     deafUser: { type: Schema.Types.ObjectId, ref: "User", required: true },
     method: { type: String, enum: ["sign", "text"], required: true },
-    status: { type: String, enum: ["CONNECTING", "ACTIVE", "ENDED"], default: "CONNECTING" },
+    status: { type: String, enum: ["CONNECTING", "ACTIVE", "CANCELLED", "ENDED"], default: "CONNECTING" },
     pairingCode: { type: String, required: true },
     startedAt: { type: Date, default: () => new Date() },
     endedAt: { type: Date },

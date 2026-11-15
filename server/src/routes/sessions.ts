@@ -5,6 +5,8 @@ import {
   getSessionHandler,
   listSessionsHandler,
   updateSessionStatusHandler,
+  acceptSessionHandler,
+  rejectSessionHandler,
 } from "../controllers/sessionController.js";
 import { requireAuth } from "../middleware/auth.js";
 
@@ -17,5 +19,7 @@ router.get("/current", currentSessionHandler);
 router.get("/", listSessionsHandler);
 router.get("/:id", getSessionHandler);
 router.patch("/:id/status", updateSessionStatusHandler);
+router.post("/:id/accept", acceptSessionHandler);
+router.post("/:id/reject", rejectSessionHandler);
 
 export default router;

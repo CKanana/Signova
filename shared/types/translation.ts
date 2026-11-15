@@ -11,7 +11,7 @@ export type Role = "ADMIN" | "STAFF" | "DEAF_USER";
 
 export type CommunicationMethod = "sign" | "text";
 
-export type SessionStatus = "CONNECTING" | "ACTIVE" | "ENDED";
+export type SessionStatus = "CONNECTING" | "ACTIVE" | "CANCELLED" | "ENDED";
 
 export type SessionEndReason =
   | "USER_ENDED"
@@ -21,7 +21,7 @@ export type SessionEndReason =
 
 export type MessageSender = "USER" | "STAFF";
 
-export type TellerStatus = "FREE" | "BUSY" | "OFFLINE";
+export type TellerStatus = "FREE" | "RESERVED" | "BUSY" | "OFFLINE";
 
 /** The translation contract. `alternatives` carries the model's top-k choices
  * with their confidences so the UI can offer retry/fallback on low confidence. */
