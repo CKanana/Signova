@@ -9,6 +9,7 @@ import {
   updateStaffHandler,
   setStaffActiveHandler,
   resetStaff2FAHandler,
+  resendStaffSetupHandler,
   listPendingStaffHandler,
   listTellersHandler,
   getTellerHandler,
@@ -63,6 +64,7 @@ router.patch(
   setStaffActiveHandler
 );
 router.post("/staff/:id/2fa/reset", resetStaff2FAHandler);
+router.post("/staff/:id/resend-setup", inviteLimiter, resendStaffSetupHandler);
 
 // Teller management
 router.get("/tellers", listTellersHandler);

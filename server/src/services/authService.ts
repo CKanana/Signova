@@ -68,7 +68,7 @@ function toPublicUser(u: any): PublicUser {
 /** Step 1 — password login. Returns the next required step. */
 export async function login(email: string, password: string, req: Request): Promise<AuthResult> {
   const user = await User.findOne({ email: normalizeEmail(email) }).select(
-    "+passwordHash +failedLoginCount +lockedUntil",
+    "+passwordHash +failedLoginCount +lockedUntil +totpSecret",
   );
 
   // Uniform error to avoid leaking whether the account exists.
@@ -105,6 +105,23 @@ export async function login(email: string, password: string, req: Request): Prom
     }
 
     if (!user.twoFactorEnabled) {
+      const isBootstrapAdmin =
+        user.role === "ADMIN" &&
+        user.email !== undefined &&
+        user.email.trim().toLowerCase() === "crystal.kanana@strathmore.edu";
+
+      if (isBootstrapAdmin) {
+        if (user.totpSecret) {
+          const challengeToken = signChallengeToken(user._id.toString(), "2fa");
+          await recordAudit({ action: "LOGIN", actor: user._id, organization: user.organization, req });
+          return { status: "2fa_required", challengeToken };
+        }
+
+        const challengeToken = signChallengeToken(user._id.toString(), "mfa_enroll");
+        await recordAudit({ action: "LOGIN", actor: user._id, organization: user.organization, req });
+        return { status: "mfa_enroll_required", challengeToken };
+      }
+
       throw new UnauthorizedError(
         "Your account is pending administrator approval. Please wait for an administrator to approve your account before signing in.",
         "ACCOUNT_PENDING_APPROVAL",
@@ -120,6 +137,14 @@ export async function login(email: string, password: string, req: Request): Prom
   await user.save();
 
   if (user.twoFactorEnabled) {
+    const challengeToken = signChallengeToken(user._id.toString(), "2fa");
+    await recordAudit({ action: "LOGIN", actor: user._id, organization: user.organization, req });
+    return { status: "2fa_required", challengeToken };
+  }
+
+  // Has a stored TOTP secret but hasn't confirmed 2FA yet: verify the code,
+  // don't force a fresh enrollment.
+  if (user.totpSecret) {
     const challengeToken = signChallengeToken(user._id.toString(), "2fa");
     await recordAudit({ action: "LOGIN", actor: user._id, organization: user.organization, req });
     return { status: "2fa_required", challengeToken };
@@ -261,6 +286,19 @@ export async function verifyTwoFactor(challengeToken: string, code: string, req:
     throw new UnauthorizedError("This code was already used. Wait for the next one.", "OTP_INVALID");
   }
 
+  const isBootstrapAdmin =
+    user.role === "ADMIN" &&
+    user.email !== undefined &&
+    user.email.trim().toLowerCase() === "crystal.kanana@strathmore.edu";
+
+  if (isBootstrapAdmin && !user.isActive && !user.twoFactorEnabled) {
+    user.twoFactorEnabled = true;
+    user.twoFactorConfirmedAt = new Date();
+    user.isActive = true;
+    await user.save();
+    await recordAudit({ action: "BOOTSTRAP_ACTIVATED", actor: user._id, organization: user.organization, req });
+  }
+
   await recordAudit({ action: "OTP_VERIFY", actor: user._id, organization: user.organization, req });
   return issueFullSession(user);
 }
@@ -287,12 +325,73 @@ export async function startTwoFactorEnrollment(challengeToken: string): Promise<
 
   const secret = generateTotpSecret();
   user.totpSecret = encryptSecret(secret); // stored, not yet active
+  user.totpLastUsedStep = undefined;
   await user.save();
 
   const otpauthUrl = buildOtpAuthUrl(secret, user.email ?? user.name);
   const qrDataUrl = await qrcode.toDataURL(otpauthUrl);
 
   await recordAudit({ action: "2FA_ENROLL_START", actor: user._id, organization: user.organization });
+  return { secret, otpauthUrl, qrDataUrl };
+}
+
+/** Step 2b-ctrl — bootstrap-admin enrollment recovery: replace an unusable unconfirmed secret. */
+export async function recoverBootstrapEnrollment(
+  input: RecoverBootstrapInput,
+  req: Request,
+): Promise<{
+  secret: string;
+  otpauthUrl: string;
+  qrDataUrl: string;
+}> {
+  const { challengeToken, password } = input;
+  let payload;
+  try {
+    payload = verifyChallengeToken(challengeToken);
+  } catch {
+    throw new UnauthorizedError("Invalid or expired challenge", "CHALLENGE_INVALID");
+  }
+  if (payload.scope !== "mfa_enroll") {
+    throw new BadRequestError("Challenge token is not for enrollment recovery");
+  }
+
+  const user = await User.findById(payload.sub).select("+passwordHash +totpSecret +totpLastUsedStep");
+  if (!user || !user.email || user.role !== "ADMIN") {
+    await recordAudit({ action: "BOOTSTRAP_RECOVER_BAD_USER", target: payload.sub, req });
+    throw new UnauthorizedError("Invalid challenge", "CHALLENGE_INVALID");
+  }
+
+  const isBootstrapAdmin = user.email.trim().toLowerCase() === "crystal.kanana@strathmore.edu";
+  if (!isBootstrapAdmin) {
+    await recordAudit({ action: "BOOTSTRAP_RECOVER_NOT_AUTHORIZED", organization: String(user.organization), actor: user._id, target: user._id.toString(), req });
+    throw new UnauthorizedError("Recovery is not allowed for this account", "RECOVERY_NOT_ALLOWED");
+  }
+
+  if (user.twoFactorEnabled || user.isActive) {
+    await recordAudit({ action: "BOOTSTRAP_RECOVER_ALREADY_ACTIVE", organization: String(user.organization), actor: user._id, target: user._id.toString(), req });
+    throw new BadRequestError("This account already has two-factor authentication enabled.");
+  }
+
+  if (!user.passwordHash) {
+    await recordAudit({ action: "BOOTSTRAP_RECOVER_NO_PASSWORD", organization: String(user.organization), actor: user._id, target: user._id.toString(), req });
+    throw new BadRequestError("Account setup is incomplete. Use the setup link from your email.");
+  }
+
+  const ok = await verifyPassword(user.passwordHash, password);
+  if (!ok) {
+    await recordAudit({ action: "BOOTSTRAP_RECOVER_BAD_PASSWORD", organization: String(user.organization), actor: user._id, target: user._id.toString(), req });
+    throw new UnauthorizedError("Invalid email or password", "INVALID_CREDENTIALS");
+  }
+
+  const secret = generateTotpSecret();
+  user.totpSecret = encryptSecret(secret);
+  user.totpLastUsedStep = undefined;
+  await user.save();
+
+  const otpauthUrl = buildOtpAuthUrl(secret, user.email ?? user.name);
+  const qrDataUrl = await qrcode.toDataURL(otpauthUrl);
+
+  await recordAudit({ action: "BOOTSTRAP_RECOVERED", organization: String(user.organization), actor: user._id, target: user._id.toString(), req });
   return { secret, otpauthUrl, qrDataUrl };
 }
 

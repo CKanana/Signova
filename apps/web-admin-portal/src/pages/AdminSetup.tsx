@@ -1,17 +1,24 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { useSearchParams, Navigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useSearchParams, Navigate, useNavigate } from "react-router-dom";
 import { useAdminAuth } from "../context/AdminAuthContext";
 import { adminApi } from "../services/api";
 import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/States";
 import { IconEye } from "../components/ui/Icons";
 import brandIcon from "/signova-mark-purple.png";
+import "../../../../shared/web-login/src/auth-layout.css";
 
-type SetupStage = "password" | "enroll" | "done";
+type SetupStage = "password" | "enroll" | "recover" | "done";
+
+type EnrollData = {
+  qrDataUrl?: string;
+  secret?: string;
+};
 
 export function AdminSetup() {
-  const { error, isSubmitting, activateEnrollment, cancelTwoFactor } = useAdminAuth();
+  const { error, isSubmitting, cancelTwoFactor, activateEnrollment } = useAdminAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const token = searchParams.get("token");
 
   const [password, setPassword] = useState("");
@@ -23,12 +30,32 @@ export function AdminSetup() {
   const [stage, setStage] = useState<SetupStage>("password");
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [enrollData, setEnrollData] = useState<EnrollData | null>(null);
+
+  const { isAuthenticated } = useAdminAuth();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/admin/overview", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const errorMessage = localError ?? error;
   const passwordMismatch =
     password.length > 0 &&
     confirm.length > 0 &&
     password !== confirm;
+
+  useEffect(() => {
+    if (!token) return;
+    setLocalError(null);
+    setPassword("");
+    setConfirm("");
+    setCode("");
+    setStage("password");
+    setChallengeToken(null);
+    setEnrollData(null);
+  }, [token]);
 
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,12 +76,55 @@ export function AdminSetup() {
     try {
       const res = await adminApi.bootstrapAccept(token, password);
       if (res.status === "mfa_enroll_required" && res.challengeToken) {
-        await adminApi.enroll2FAStart(res.challengeToken);
-        setChallengeToken(res.challengeToken);
-        setStage("enroll");
+        try {
+          const enrollResult = await adminApi.enroll2FAStart(res.challengeToken);
+          if (enrollResult?.qrDataUrl || enrollResult?.secret) {
+            setChallengeToken(res.challengeToken);
+            setEnrollData({
+              qrDataUrl: enrollResult.qrDataUrl,
+              secret: enrollResult.secret,
+            });
+            setStage("enroll");
+          } else {
+            setLocalError("Enrollment data is missing. Use the link from your email and try again.");
+          }
+        } catch (err: any) {
+          if (err?.code === "CHALLENGE_INVALID") {
+            setChallengeToken(res.challengeToken);
+            setStage("recover");
+          } else {
+            setLocalError(err?.message ?? "Setup failed. Use the link from your email.");
+          }
+        }
       }
     } catch (err: any) {
       setLocalError(err?.message ?? "Setup failed. Use the link from your email.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRecoverSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLocalError(null);
+    if (!challengeToken || !password) {
+      setLocalError("Setup state is missing. Open your setup link again.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const recoverResult = await adminApi.recoverBootstrapEnrollment(challengeToken, password);
+      if (recoverResult?.qrDataUrl || recoverResult?.secret) {
+        setEnrollData({
+          qrDataUrl: recoverResult.qrDataUrl,
+          secret: recoverResult.secret,
+        });
+        setStage("enroll");
+      } else {
+        setLocalError("Enrollment data is missing. Use the link from your email and try again.");
+      }
+    } catch (err: any) {
+      setLocalError(err?.message ?? "Failed to replace two-factor setup. Please check your password.");
     } finally {
       setSubmitting(false);
     }
@@ -66,16 +136,72 @@ export function AdminSetup() {
     if (!challengeToken || !code) return;
     setSubmitting(true);
     try {
+      console.log("[diag] handleEnrollSubmit before activate");
       await activateEnrollment(challengeToken, code);
-      window.location.replace("/login");
+      console.log("[diag] handleEnrollSubmit after activate, navigating");
+      navigate("/admin/overview", { replace: true });
     } catch (err: any) {
+      console.log("[diag] handleEnrollSubmit error", { message: err?.message });
       setLocalError(err?.message ?? "Failed to activate two-factor authentication. Please check your code.");
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (stage === "recover") {
+    return (
+      <div className="admin-setup">
+        <div className="admin-setup__card">
+          <div className="admin-setup__header">
+            <img src={brandIcon} alt="" />
+            <h1 className="admin-setup__title">Replace two-factor setup</h1>
+            <p className="admin-setup__subtitle">Your current authenticator setup is unusable. Re-enter your password to generate a fresh QR code.</p>
+          </div>
+          {errorMessage ? <ErrorBanner message={errorMessage} /> : null}
+          <form onSubmit={handleRecoverSubmit}>
+            <div className="admin-setup__field">
+              <label className="admin-label" htmlFor="admin-recover-password">
+                Administrator password
+              </label>
+              <div className="admin-setup__password">
+                <input
+                  id="admin-recover-password"
+                  className="admin-input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="admin-setup__visibility"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  <IconEye concealed={!showPassword} />
+                </button>
+              </div>
+              <span className="admin-setup__hint">This does not change your password.</span>
+            </div>
+            <div className="admin-setup__actions">
+              <Button type="submit" block loading={submitting || isSubmitting}>
+                {submitting || isSubmitting ? "Generating new setup..." : "Generate new setup code"}
+              </Button>
+              <Button variant="ghost" block type="button" onClick={cancelTwoFactor}>
+                Start over
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   if (stage === "enroll") {
+    const qrMissing = !enrollData?.qrDataUrl && !enrollData?.secret;
     return (
       <div className="admin-setup">
         <div className="admin-setup__card">
@@ -85,6 +211,22 @@ export function AdminSetup() {
             <p className="admin-setup__subtitle">Scan the QR code with your authenticator app and enter the 6-digit code.</p>
           </div>
           {errorMessage ? <ErrorBanner message={errorMessage} /> : null}
+          {qrMissing ? (
+            <div className="admin-setup__enroll-error">
+              Enrollment data is missing. Use the link from your email and try again.
+            </div>
+          ) : null}
+          {enrollData?.qrDataUrl ? (
+            <div className="admin-setup__qr">
+              <img src={enrollData.qrDataUrl} alt="Authenticator QR code" />
+            </div>
+          ) : null}
+          {enrollData?.secret ? (
+            <div className="admin-setup__secret">
+              <span className="admin-setup__secret-label">Manual setup key</span>
+              <code>{enrollData.secret}</code>
+            </div>
+          ) : null}
           <form onSubmit={handleEnrollSubmit}>
             <div className="admin-setup__field">
               <label className="admin-label" htmlFor="admin-enroll-code">

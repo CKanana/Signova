@@ -1013,6 +1013,52 @@ a:hover {
   gap: 10px;
 }
 
+.admin-setup__qr {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+  padding: 10px;
+  border: 1px solid var(--admin-border-subtle);
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface);
+}
+
+.admin-setup__qr img {
+  width: 192px;
+  height: 192px;
+}
+
+.admin-setup__secret {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 10px;
+  border: 1px dashed var(--admin-border-subtle);
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-surface);
+}
+
+.admin-setup__secret-label {
+  font-size: 12px;
+  color: var(--admin-text-muted);
+}
+
+.admin-setup__secret code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.admin-setup__enroll-error {
+  margin-bottom: 14px;
+  padding: 10px;
+  border-radius: var(--admin-radius-md);
+  background: var(--admin-danger-soft, #fff1f1);
+  color: var(--admin-danger, #c0392b);
+  font-size: 13px;
+}
+
 .admin-setup__password {
   position: relative;
 }

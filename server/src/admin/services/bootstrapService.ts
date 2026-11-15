@@ -34,6 +34,17 @@ export interface ActivateBootstrapResult {
   user: { id: string; name: string; email?: string; role: "ADMIN"; twoFactorEnabled: boolean; isActive: boolean };
 }
 
+export interface RecoverBootstrapInput {
+  challengeToken: string;
+  password: string;
+}
+
+export interface RecoverBootstrapResult {
+  secret: string;
+  otpauthUrl: string;
+  qrDataUrl: string;
+}
+
 // Single-use consume helper using compare-and-set semantics.
 async function consumeSetupToken(tokenHash: string) {
   const token = await SetupToken.findOneAndUpdate(
@@ -96,7 +107,6 @@ export async function acceptBootstrap(input: AcceptBootstrapInput): Promise<Acce
   user.totpSecret = encryptSecret(secret);
   user.twoFactorEnabled = false;
   user.twoFactorConfirmedAt = undefined;
-  user.totpLastUsedStep = undefined;
   user.isActive = false;
   user.failedLoginCount = 0;
   user.lockedUntil = undefined;

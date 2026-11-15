@@ -68,6 +68,7 @@ async function main() {
     activateTwoFactorEnrollment,
     verifyTwoFactor,
   } = await import("../src/services/authService.js");
+  const { hashPassword } = await import("../src/services/tokenService.js");
   const { authenticator } = await import("otplib");
   const express = (await import("express")).default;
   const { createServer } = await import("node:http");
@@ -80,6 +81,7 @@ async function main() {
   const { Teller } = await import("../src/models/teller.js");
   const { RefreshToken } = await import("../src/models/refreshToken.js");
   const { PasswordResetToken } = await import("../src/models/passwordResetToken.js");
+  const { SetupToken } = await import("../src/models/setupToken.js");
   const { setMailTransport } = await import("../src/services/mailService.js");
   const mongoose = (await import("mongoose")).default;
 
@@ -185,6 +187,60 @@ async function main() {
 
   const me = await j("/api/organizations/me", authHeader(adminToken));
   check("authenticated org fetch works", me.status === 200 && me.body.organization.shortName === "KNH");
+
+  // --- 3a. Bootstrap first-admin login uses stored enrollment when present ---
+  console.log("\n[3a] Bootstrap first-admin login");
+  const crystalUser = await User.findOne({ email: "crystal.kanana@strathmore.edu" });
+  if (crystalUser) {
+    await User.updateOne(
+      { _id: crystalUser._id },
+      { $set: { isActive: false, twoFactorEnabled: false, passwordHash: await hashPassword("Password123!"), totpSecret: (await import("../src/utils/crypto.js")).encryptSecret((await import("otplib")).authenticator.generateSecret()), totpLastUsedStep: undefined } },
+    );
+  }
+  const bootstrapLogin = await login("crystal.kanana@strathmore.edu", "Password123!", {} as any);
+  check("bootstrap admin login returns 2fa_required when enrollment exists", bootstrapLogin.status === "2fa_required", JSON.stringify(bootstrapLogin));
+  check("bootstrap admin login does not return pending_approval", bootstrapLogin.status !== "pending_approval");
+
+  let invalidBootstrapVerifyRejected = false;
+  try {
+    await verifyTwoFactor(bootstrapLogin.challengeToken!, "000000", {} as any);
+  } catch {
+    invalidBootstrapVerifyRejected = true;
+  }
+  check("bootstrap invalid OTP is rejected", invalidBootstrapVerifyRejected);
+
+  const crystalForSecret = await User.findOne({ email: "crystal.kanana@strathmore.edu" }).select("+totpSecret");
+  const recoveredSecret = (await import("../src/utils/crypto.js")).decryptSecret(crystalForSecret!.totpSecret!);
+  let validBootstrapVerify: any = { status: "skipped" };
+  try {
+    validBootstrapVerify = await verifyTwoFactor(bootstrapLogin.challengeToken!, (await import("otplib")).authenticator.generate(recoveredSecret), {} as any);
+  } catch {
+    validBootstrapVerify = { status: "error" };
+  }
+  check("bootstrap existing enrollment verification succeeds", validBootstrapVerify.status === "authenticated" && !!validBootstrapVerify.accessToken, JSON.stringify(validBootstrapVerify));
+  check("bootstrap account activated after verification", (await User.findOne({ email: "crystal.kanana@strathmore.edu" }))?.isActive === true);
+  check("bootstrap 2FA enabled after verification", (await User.findOne({ email: "crystal.kanana@strathmore.edu" }))?.twoFactorEnabled === true);
+
+  const afterActivationLogin = await login("crystal.kanana@strathmore.edu", "Password123!", {} as any);
+  check("activated bootstrap admin later requires 2FA login", afterActivationLogin.status === "2fa_required" && !!afterActivationLogin.challengeToken, JSON.stringify(afterActivationLogin));
+
+  // --- 3b. Ordinary staff without 2FA remain pending approval ---
+  console.log("\n[3b] Ordinary staff pending approval preserved");
+  const ordinaryStaff = await User.findOne({ email: "brian@signova.test" });
+  if (ordinaryStaff) {
+    await User.updateOne({ _id: ordinaryStaff._id }, { $set: { isActive: false, twoFactorEnabled: false } });
+  }
+  let ordinaryStaffLoginResult: any = { status: "skipped" };
+  try {
+    ordinaryStaffLoginResult = await login("brian@signova.test", "Password123!", {} as any);
+  } catch (err: any) {
+    ordinaryStaffLoginResult = { status: err?.code ?? "error", message: err?.message };
+  }
+  check("ordinary staff without 2FA is pending_approval", ordinaryStaffLoginResult.status === "ACCOUNT_PENDING_APPROVAL", JSON.stringify(ordinaryStaffLoginResult));
+
+  if (ordinaryStaff) {
+    await User.updateOne({ _id: ordinaryStaff._id }, { $set: { isActive: true } });
+  }
 
   // --- 4. RBAC ---
   console.log("\n[4] RBAC");
@@ -716,8 +772,9 @@ async function main() {
   check("invited user role is STAFF", newUser?.role === "STAFF");
   check("invited user belongs to admin org", String(newUser?.organization) === String((await User.findOne({ email: "admin@signova.test" }))?.organization));
 
-  const inviteMail = lastMail();
-  check("invitation email was sent", inviteMail?.to === "invited1@gmail.com" && inviteMail.subject === "You are invited to Signova");
+  const inviteMails = sentMails.filter((m) => m.subject === "You are invited to Signova");
+  const inviteMail = inviteMails[inviteMails.length - 1];
+  check("invitation email was sent", inviteMail?.to === "invited1@gmail.com", JSON.stringify(inviteMail?.subject));
   check("invitation email contains the token link", inviteMail?.text.includes(`/invite?token=${rawToken}`), JSON.stringify(inviteMail?.text).slice(0, 120));
 
   mailShouldFail = true;
@@ -726,6 +783,81 @@ async function main() {
   check("mail failure reported safely", failedMail.status === 400 && failedMail.body.error?.code === "BAD_REQUEST", JSON.stringify(failedMail.body));
   const failedUser = await User.findOne({ email: "mailfail@signova.test" });
   check("mail failure leaves no orphan user", !failedUser);
+
+  // --- 17. Resend staff setup email ---
+  console.log("\n[17] Resend staff setup email");
+
+  const resendTargetEmail = "kananacrystal6822@gmail.com";
+  let resendUser = await User.findOne({ email: resendTargetEmail });
+  if (!resendUser) {
+    resendUser = await User.create({ organization: org!._id, role: "STAFF", name: "Kanan Crystal", email: resendTargetEmail });
+  }
+  check("resend target exists", !!resendUser);
+
+  if (resendUser.isActive || resendUser.twoFactorEnabled) {
+    await User.updateOne({ _id: resendUser._id }, { $set: { isActive: false, twoFactorEnabled: false } });
+  }
+  const freshResend = await User.findById(resendUser._id);
+  check("resend target is inactive before request", freshResend?.isActive === false);
+  check("resend target has no 2FA before request", freshResend?.twoFactorEnabled === false);
+
+  const beforeResendMails = sentMails.length;
+  const beforeResendTokens = await SetupToken.countDocuments({ user: resendUser._id });
+
+  const resendOk = await j(`/api/admin/staff/${resendUser._id}/resend-setup`, { ...authHeader(adminToken), method: "POST" });
+  check("resend setup succeeds", resendOk.status === 200 && resendOk.body.ok === true && resendOk.body.status === "sent", JSON.stringify(resendOk.body));
+  check("resend setup returns no raw token", !JSON.stringify(resendOk.body).includes("token="));
+  check("resend sent an email", sentMails.length === beforeResendMails + 1);
+  const resendMail = sentMails[sentMails.length - 1];
+  check("resend email addresses the staff account", resendMail?.to === resendTargetEmail);
+  check("resend email is the setup template", resendMail?.subject === "Set up your Signova administrator account");
+  const afterResendTokens = await SetupToken.countDocuments({ user: resendUser._id });
+  check("resend created a new setup token", afterResendTokens === beforeResendTokens + 1, `before=${beforeResendTokens} after=${afterResendTokens}`);
+  const latestResendToken = await SetupToken.findOne({ user: resendUser._id }).sort({ createdAt: -1 }).lean();
+  check("latest resend token is not expired", latestResendToken?.expiresAt > new Date());
+  await SetupToken.create({ user: resendUser._id, tokenHash: "old-token", scope: "password_setup", expiresAt: new Date(Date.now() + 1000) });
+  const manuallySuperseded = await SetupToken.findOne({ user: resendUser._id, tokenHash: "old-token" }).lean();
+  check("manually inserted old token exists", !!manuallySuperseded);
+
+  const secondResend = await j(`/api/admin/staff/${resendUser._id}/resend-setup`, { ...authHeader(adminToken), method: "POST" });
+  check("second resend succeeds", secondResend.status === 200 && secondResend.body.ok === true, JSON.stringify(secondResend.body));
+
+  const afterSecond = await SetupToken.findOne({ user: resendUser._id, tokenHash: "old-token" }).lean();
+  check("old manually inserted token is superseded", afterSecond?.expiresAt <= new Date(), JSON.stringify(afterSecond?.expiresAt));
+  const secondLatest = await SetupToken.findOne({ user: resendUser._id }).sort({ createdAt: -1 }).lean();
+  check("second latest token remains valid", secondLatest?.expiresAt > new Date());
+
+  const unauthorizedResend = await j(`/api/admin/staff/${resendUser._id}/resend-setup`);
+  check("unauthenticated resend is rejected", unauthorizedResend.status === 401, `got ${unauthorizedResend.status}`);
+
+  const staffResend = await j(`/api/admin/staff/${resendUser._id}/resend-setup`, { ...authHeader(staffToken), method: "POST" });
+  check("staff cannot resend another user's setup (403)", staffResend.status === 403, `got ${staffResend.status} ${JSON.stringify(staffResend.body)}`);
+
+  const crossOrgResend = await j(`/api/admin/staff/${resendUser._id}/resend-setup`, { ...authHeader(otherToken), method: "POST" });
+  check("cross-org admin cannot resend another org's setup (404)", crossOrgResend.status === 404, `got ${crossOrgResend.status} ${JSON.stringify(crossOrgResend.body)}`);
+
+  const unknownResend = await j(`/api/admin/staff/${otherUser!._id}/resend-setup`, { ...authHeader(adminToken), method: "POST" });
+  check("unknown user resend is rejected", unknownResend.status === 404, `got ${unknownResend.status} ${JSON.stringify(unknownResend.body)}`);
+
+  const { signAccessToken: signAccessToken2 } = await import("../src/utils/jwt.js");
+  const selfResend = resendUser;
+  const selfResendToken = signAccessToken2({ sub: selfResend._id.toString(), orgId: org!._id.toString(), role: "STAFF" });
+  const selfResendRes = await j(`/api/admin/staff/${selfResend._id}/resend-setup`, { ...authHeader(selfResendToken), method: "POST" });
+  check("staff resending their own inactive setup is rejected", selfResendRes.status === 403, `got ${selfResendRes.status} ${JSON.stringify(selfResendRes.body)}`);
+
+  const activeResendUser = await User.findOne({ email: "resend2@gmail.com" }) ?? (await User.create({ organization: org!._id, role: "STAFF", name: "Active Resend", email: "resend2@gmail.com", passwordHash: (await import("../src/services/tokenService.js")).hashPassword ? await (await import("../src/services/tokenService.js")).hashPassword("Password123!") : "", twoFactorEnabled: true, isActive: true }));
+  const activeResend = await j(`/api/admin/staff/${activeResendUser._id}/resend-setup`, { ...authHeader(adminToken), method: "POST" });
+  check("active staff resend is rejected", activeResend.status === 400 && activeResend.body.error?.code === "BAD_REQUEST", JSON.stringify(activeResend.body));
+
+  mailShouldFail = true;
+  const beforeFailMails = sentMails.length;
+  const beforeFailTokens = await SetupToken.countDocuments({ user: resendUser._id });
+  const failResend = await j(`/api/admin/staff/${resendUser._id}/resend-setup`, { ...authHeader(adminToken), method: "POST" });
+  mailShouldFail = false;
+  check("mail failure reported safely", failResend.status === 400 && failResend.body.error?.code === "BAD_REQUEST", JSON.stringify(failResend.body));
+  check("mail failure sent no email", sentMails.length === beforeFailMails);
+  const afterFailTokens = await SetupToken.countDocuments({ user: resendUser._id });
+  check("mail failure leaves no usable setup token", afterFailTokens === beforeFailTokens, `before=${beforeFailTokens} after=${afterFailTokens}`);
 
   console.log(`\n========================================`);
   console.log(`RESULTS: ${passed} passed, ${failed} failed`);

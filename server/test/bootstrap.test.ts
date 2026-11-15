@@ -46,7 +46,7 @@ async function main() {
   const { acceptBootstrap, activateBootstrap } = await import("../src/admin/services/bootstrapService.js");
   const { createInvitation, acceptInvitation } = await import("../src/admin/services/invitationService.js");
   const { setMailTransport } = await import("../src/services/mailService.js");
-  const { signAccessToken } = await import("../src/utils/jwt.js");
+  const { signAccessToken, signChallengeToken } = await import("../src/utils/jwt.js");
   const { decryptSecret } = await import("../src/utils/crypto.js");
   const { randomToken, hashToken } = await import("../src/utils/crypto.js");
   const { authenticator } = await import("otplib");
@@ -194,6 +194,95 @@ async function main() {
   const activeAfter = await User.findOne({ email: "crystal.kanana@strathmore.edu" }).select("+totpSecret");
   check("bootstrap account is active", activeAfter?.isActive === true);
   check("bootstrap account has 2FA enabled", activeAfter?.twoFactorEnabled === true);
+
+  const loginAfter = await j("/api/admin/login", {
+    method: "POST",
+    body: JSON.stringify({ email: "crystal.kanana@strathmore.edu", password: "BootstrapPass123!" }),
+  });
+  check("activated bootstrap admin can login with 2FA challenge", loginAfter.status === 200 && loginAfter.body.status === "2fa_required" && !!loginAfter.body.challengeToken, JSON.stringify(loginAfter.body));
+
+  // --- 3a. Bootstrap enrollment recovery ---
+  console.log("\n[3a] Bootstrap enrollment recovery");
+  const recoverySetupRaw = randomToken(32);
+  const recoverySetupHash = hashToken(recoverySetupRaw);
+  await SetupToken.create({
+    user: (await User.findOne({ email: "crystal.kanana@strathmore.edu" }))!._id,
+    tokenHash: recoverySetupHash,
+    scope: "bootstrap",
+    expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+  });
+
+  const recoveryAccept = await j("/api/admin/bootstrap/accept", {
+    method: "POST",
+    body: JSON.stringify({ token: recoverySetupRaw, password: "RecoveryPass123!" }),
+  });
+  check("recovery bootstrap accept returns mfa_enroll_required", recoveryAccept.status === 200 && recoveryAccept.body.status === "mfa_enroll_required", JSON.stringify(recoveryAccept.body));
+  const recoveryChallenge = recoveryAccept.body.challengeToken;
+
+  const recoveryEnroll = await j("/api/admin/2fa/enroll/start", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryChallenge }),
+  });
+  check("initial recovery enroll/start succeeds", recoveryEnroll.status === 200 && !!recoveryEnroll.body.qrDataUrl, JSON.stringify(recoveryEnroll.body));
+  const oldInitialSecret = recoveryEnroll.body.secret;
+
+  const recoveryReissue = await j("/api/admin/bootstrap/recover-enrollment", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryChallenge, password: "RecoveryPass123!" }),
+  });
+  check("recovery endpoint returns new QR data", recoveryReissue.status === 200 && !!recoveryReissue.body.qrDataUrl, JSON.stringify(recoveryReissue.body));
+  const newSecret = recoveryReissue.body.secret;
+
+  const crystalAfterRecover = await User.findOne({ email: "crystal.kanana@strathmore.edu" }).select("+totpSecret +totpLastUsedStep");
+  check("totpLastUsedStep cleared after recovery", crystalAfterRecover?.totpLastUsedStep === undefined);
+  check("stored secret changes after recovery", crystalAfterRecover?.totpSecret !== (await import("../src/utils/crypto.js")).encryptSecret(oldInitialSecret), `stored=${crystalAfterRecover?.totpSecret}`);
+  check("new secret generates a valid code", typeof newSecret === "string" && !!authenticator.generate(newSecret));
+
+  const invalidOldAfterRecover = await j("/api/admin/2fa/enroll/activate", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryChallenge, code: authenticator.generate(oldInitialSecret) }),
+  });
+  check("old initial secret rejected after recovery", invalidOldAfterRecover.status === 400 || invalidOldAfterRecover.status === 401, `got ${invalidOldAfterRecover.status} ${JSON.stringify(invalidOldAfterRecover.body)}`);
+
+  const invalidRecoveryVerify = await j("/api/admin/2fa/verify", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryChallenge, code: "000000" }),
+  });
+  check("invalid recovery code rejected", invalidRecoveryVerify.status === 401 || invalidRecoveryVerify.status === 400, `got ${invalidRecoveryVerify.status} ${JSON.stringify(invalidRecoveryVerify.body)}`);
+
+  const recoveryActivate = await j("/api/admin/2fa/enroll/activate", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryChallenge, code: authenticator.generate(newSecret) }),
+  });
+  check("recovery activation succeeds", recoveryActivate.status === 200 && recoveryActivate.body.status === "authenticated", JSON.stringify(recoveryActivate.body));
+
+  const recoveryReplay = await j("/api/admin/2fa/enroll/activate", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryChallenge, code: authenticator.generate(newSecret) }),
+  });
+  check("replayed recovery code rejected", recoveryReplay.status === 401 || recoveryReplay.status === 400, `got ${recoveryReplay.status} ${JSON.stringify(recoveryReplay.body)}`);
+
+  const recoveryExpiredRaw = randomToken(32);
+  const recoveryExpiredHash = hashToken(recoveryExpiredRaw);
+  await SetupToken.create({
+    user: (await User.findOne({ email: "crystal.kanana@strathmore.edu" }))!._id,
+    tokenHash: recoveryExpiredHash,
+    scope: "bootstrap",
+    expiresAt: new Date(Date.now() - 1000),
+  });
+  const recoveryExpiredChallenge = signChallengeToken((await User.findOne({ email: "crystal.kanana@strathmore.edu" }))!._id.toString(), "mfa_enroll");
+  const recoveryExpiredResp = await j("/api/admin/bootstrap/recover-enrollment", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryExpiredChallenge, password: "RecoveryPass123!" }),
+  });
+  check("expired recovery challenge rejected", recoveryExpiredResp.status === 400);
+
+  const recoveryBadScope = signChallengeToken((await User.findOne({ email: "crystal.kanana@strathmore.edu" }))!._id.toString(), "2fa");
+  const recoveryBadScopeResp = await j("/api/admin/bootstrap/recover-enrollment", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken: recoveryBadScope, password: "RecoveryPass123!" }),
+  });
+  check("bad-scope recovery challenge rejected", recoveryBadScopeResp.status === 400);
 
   // --- 4. Bootstrap replay + expiry + scope ---
   console.log("\n[4] Bootstrap replay/expiry/scope");

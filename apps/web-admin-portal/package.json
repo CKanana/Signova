@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
+    "@signova/web-dashboard-shell": "1.0.0",
     "formik": "^2.4.9",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

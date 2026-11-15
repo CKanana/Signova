@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { validate } from "../../middleware/validate.js";
 import * as adminService from "../services/adminService.js";
+import * as invitationService from "../services/invitationService.js";
 import { recordAudit } from "../../services/auditService.js";
 import { paramId } from "../../utils/params.js";
 import { Organization } from "../../models/organization.js";
@@ -217,6 +218,12 @@ export async function setStaffActiveHandler(req: Request, res: Response): Promis
 export async function resetStaff2FAHandler(req: Request, res: Response): Promise<void> {
   await adminService.resetStaff2FA(req.auth!.orgId, paramId(req), req.auth!.sub, req);
   res.json({ ok: true });
+}
+
+export async function resendStaffSetupHandler(req: Request, res: Response): Promise<void> {
+  const userId = paramId(req);
+  const result = await invitationService.resendStaffSetup(req.auth!.orgId, userId, req.auth!.sub, req);
+  res.json(result);
 }
 
 export async function listPendingStaffHandler(req: Request, res: Response): Promise<void> {

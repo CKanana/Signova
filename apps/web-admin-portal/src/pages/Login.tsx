@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AuthLayout } from "../../../../shared/web-login/src/AuthLayout";
 import { useAdminAuth } from "../context/AdminAuthContext";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/States";
 import { IconEye, IconMessage, IconShield } from "../components/ui/Icons";
@@ -80,6 +81,15 @@ export function Login() {
       /* SDK not ready yet — will re-initialize on click */
     }
   }, [sdkReady, loginWithGoogle]);
+
+  const navigate = useNavigate();
+
+  const { isAuthenticated } = useAdminAuth();
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/admin/overview", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const showCredentials = twoFactorStage.kind === "none";
   const showTwoFactor = twoFactorStage?.kind === "verify";
