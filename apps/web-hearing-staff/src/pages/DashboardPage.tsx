@@ -148,8 +148,8 @@ export function DashboardPage({ onOpenSession, onOpenHistory }: DashboardPagePro
                   className="staff-row staff-row--between"
                   style={{
                     padding: "10px 14px",
-                    border: "1.5px solid var(--signova-border)",
-                    borderRadius: 12,
+                    border: `1px solid var(--staff-card-border)`,
+                    borderRadius: "var(--staff-card-radius)",
                   }}
                 >
                   <div className="staff-row">

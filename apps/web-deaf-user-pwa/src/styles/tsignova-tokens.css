@@ -1,0 +1,318 @@
+/* =======================================================================
+   Signova design tokens — user PWA only.
+
+   Palette (strict):
+     purple      #5B2A8C   header + primary buttons
+     cornsilk    #FFF8DC   page background
+     cream       #FFFBEB   cards
+     lavender    #EFE6FB   panels + teller bubbles
+     glow        #C9B4FF   decorative lines ONLY
+     ink         #3B1A6E   headings
+     primary     #5B2A8C   body primary
+     body        #1E1B2E   body
+     secondary   #4B3B6B   secondary
+
+   White (#FFFFFF) is used ONLY inside solid #5B2A8C fills (button labels,
+   avatars, focus rings). Over the camera video there is NO tint: the feed
+   keeps true colour, only the 3px purple border, 18px radius and cream
+   overlay chips are drawn on top.
+
+   Red #B42318 is reserved for the End session action only.
+
+   Import after the reset/base in signova-tokens.css so every screen/component
+   in apps/web-deaf-user-pwa shares this single vocabulary.
+   ======================================================================= */
+
+/* --------------------------------------------------------------------------
+   Canonical tokens (light theme only — user PWA is light-only)
+   -------------------------------------------------------------------------- */
+:root {
+  /* Brand — Signova purple */
+  --purple-800: #3B1A6E;
+  --purple-700: #4A2278;
+  --purple-600: #5B2A8C;
+  --purple-600-rgb: 91, 42, 140;
+  --purple-500: #7A39A8;
+  --purple-400: #9B7BD0;
+  --purple-300: #B89BF0;
+  --purple-200: #D6B4E8;
+  --purple-100: #E7DFFF;
+  --purple-50: #F3E9FC;
+
+  /* Page background — cornsilk */
+  --cornsilk: #FFF8DC;
+  --cornsilk-soft: #FFF9E6;
+
+  /* Cards & panels — cream + lavender */
+  --cream-card: #FFFBEB;
+  --lavender: #EFE6FB;
+
+  /* Borders */
+  --border-soft: #8E73C4;
+  --border-ctl: #9B7BD0;
+  --border-glow: #C9B4FF;
+
+  /* Text — strict palette */
+  --ink: #3B1A6E;      /* headings */
+  --primary-text: #5B2A8C;
+  --body-text: #1E1B2E;
+  --secondary-text: #4B3B6B;
+
+  /* Status colours (status only — never used as theme colour) */
+  --success-text: #14532D;
+  --success-bg: #DCFCE7;
+  --success-dot: #16A34A;
+  --warning-text: #7A4B00;
+  --warning-bg: #FEF3C7;
+  --danger-text: #B42318;
+  --danger-bg: #FEE4E2;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px rgba(91, 42, 140, 0.35);
+
+  /* Typography */
+  --font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Radius */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow: 0 4px 16px rgba(59, 26, 110, 0.12);
+  --shadow-card: 0 2px 10px rgba(30, 27, 46, 0.08);
+  --shadow-medium: 0 12px 40px rgba(59, 26, 110, 0.22);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Safe areas */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
+
+  /* Layout */
+  --max-width: 1100px;
+
+  color-scheme: light;
+}
+
+/* --------------------------------------------------------------------------
+   Legacy --signova-* aliases (existing code references these)
+   -------------------------------------------------------------------------- */
+:root {
+  --signova-primary: var(--purple-600);
+  --signova-primary-dark: var(--purple-800);
+  --signova-primary-soft: var(--purple-50);
+  --signova-on-primary: #FFFFFF;
+
+  --signova-background: var(--cornsilk);
+  --signova-surface: var(--cream-card);
+  --signova-surface-elevated: var(--cream-card);
+
+  --signova-text: var(--body-text);
+  --signova-text-strong: var(--ink);
+  --signova-muted-text: var(--secondary-text);
+
+  --signova-border: var(--border-soft);
+  --signova-border-strong: var(--border-soft);
+  --signova-border-glow: var(--border-glow);
+  --signova-border-ctl: var(--border-ctl);
+
+  --signova-success: var(--success-dot);
+  --signova-success-soft: var(--success-bg);
+  --signova-success-border: var(--success-bg);
+  --signova-warning: var(--warning-text);
+  --signova-warning-soft: var(--warning-bg);
+  --signova-warning-border: var(--warning-bg);
+  --signova-danger: var(--danger-text);
+  --signova-danger-soft: var(--danger-bg);
+  --signova-danger-border: var(--danger-bg);
+  --signova-danger-soft-text: var(--danger-text);
+
+  --signova-focus: var(--purple-600);
+
+  --signova-font-heading: var(--font-family);
+  --signova-font-family: var(--font-family);
+
+  --signova-radius-control: var(--radius-control);
+  --signova-radius-panel: var(--radius-card);
+  --signova-radius-card: var(--radius-card);
+  --signova-radius-pill: var(--radius-pill);
+
+  --signova-shadow-card: var(--shadow-card);
+  --signova-shadow-soft: var(--shadow);
+  --signova-shadow-medium: var(--shadow-medium);
+  --signova-shadow-focus: var(--focus-ring);
+
+  --signova-spacing-xs: var(--space-1);
+  --signova-spacing-sm: var(--space-2);
+  --signova-spacing-md: var(--space-3);
+  --signova-spacing-lg: var(--space-4);
+  --signova-spacing-xl: var(--space-5);
+
+  --signova-max-width: var(--max-width);
+  --signova-safe-top: var(--safe-top);
+  --signova-safe-bottom: var(--safe-bottom);
+  --signova-safe-left: var(--safe-left);
+  --signova-safe-right: var(--safe-right);
+}
+
+/* --------------------------------------------------------------------------
+   Base reset / typography
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--cornsilk);
+  color: var(--body-text);
+  font-family: var(--font-family);
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Accessible focus — 3px visible ring on every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--purple-600);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Visually hidden but accessible. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Reduced motion — kill all animation/transition. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Short page transitions (150-250ms). */
+.sn-fade {
+  transition: opacity 0.2s ease;
+}
+
+.sn-slide {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.sn-pressed:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Spinner. */
+.sn-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--border-soft);
+  border-top-color: var(--purple-600);
+  border-radius: 50%;
+  animation: sn-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.sn-spinner--sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2.5px;
+}
+
+@keyframes sn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Typographic scale helpers. */
+.sn-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--purple-800);
+}
+
+.sn-h1 {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 40px);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--purple-800);
+}
+
+.sn-h2 {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 28px);
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--purple-800);
+}
+
+.sn-body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--body-text);
+}
+
+.sn-body--sm {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--body-text);
+}
+
+.sn-text-2 {
+  color: var(--secondary-text);
+}

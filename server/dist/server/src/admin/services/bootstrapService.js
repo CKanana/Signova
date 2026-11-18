@@ -55,7 +55,6 @@ export async function acceptBootstrap(input) {
     user.totpSecret = encryptSecret(secret);
     user.twoFactorEnabled = false;
     user.twoFactorConfirmedAt = undefined;
-    user.totpLastUsedStep = undefined;
     user.isActive = false;
     user.failedLoginCount = 0;
     user.lockedUntil = undefined;

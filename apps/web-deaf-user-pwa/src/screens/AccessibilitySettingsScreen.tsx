@@ -1,11 +1,16 @@
 import React from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
-import { Type, Shield, Smartphone } from "lucide-react";
+import { Type, Shield, Smartphone, Monitor } from "lucide-react";
 
 export function AccessibilitySettingsScreen() {
-  const { goBack, accessibility } = useSession();
+  const { goBack, accessibility, updateAccessibility } = useSession();
   const isLargeText = accessibility?.largeText ?? false;
+  const isDataSaver = accessibility?.dataSaver ?? false;
+
+  const toggleDataSaver = () => {
+    updateAccessibility({ dataSaver: !isDataSaver });
+  };
 
   return (
     <div style={styles.container}>
@@ -27,6 +32,18 @@ export function AccessibilitySettingsScreen() {
             </TouchButton>
           </div>
           <p style={styles.rowHint}>Increases text size across the app.</p>
+        </div>
+        <div style={styles.card}>
+          <div style={styles.row}>
+            <div style={styles.rowLabel}>
+              <Monitor size={20} color="var(--signova-primary)" />
+              <span>Data-saver for animations</span>
+            </div>
+            <TouchButton variant={isDataSaver ? "primary" : "outline"} size="md" onPress={toggleDataSaver} style={styles.toggle}>
+              {isDataSaver ? "On" : "Off"}
+            </TouchButton>
+          </div>
+          <p style={styles.rowHint}>When on, animations wait for you to tap "Play animation" instead of loading automatically.</p>
         </div>
         <div style={styles.card}>
           <div style={styles.row}>

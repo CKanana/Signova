@@ -395,8 +395,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     connectSocket(token, sessionId, {
       onSessionConnected: () => {
         setIsConnected(true);
-        // Route to the right screen based on communication method
-        goToStep(currentMethod === "text" ? "text" : "live");
+        // Navigation is deferred to "session:active" so the Deaf user is not
+        // shunted to the live/text screen while their request is still
+        // pending (status CONNECTING). "session:active" fires only after an
+        // authorized teller accepts.
+      },
+      onSessionActive: () => {
+        setIsConnected(true);
+        // Advance to the real conversation screen only after the server
+        // commits CONNECTING -> ACTIVE.
+        goToStep(currentMethod === "text" ? "conversation" : "live");
         // Start the MediaPipe hand detector when the live session begins.
         // No-op if the native module is unavailable.
         if (currentMethod !== "text") {

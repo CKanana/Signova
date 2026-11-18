@@ -10,9 +10,9 @@ import {
   VALUES_PER_FRAME,
   VALUES_PER_HAND,
   LANDMARKS_PER_HAND,
-  type FrameLandmarks,
   type Landmark,
 } from "./preprocess";
+import type { HandLandmarksPerFrame } from "../../../../shared/types/session";
 
 const EXPECTED_LENGTH = CLIP_LEN * VALUES_PER_FRAME; // 60 * 126 = 7560
 
@@ -24,13 +24,13 @@ function hand(landmarks: Landmark[]): { landmarks: Landmark[] } {
   return { landmarks };
 }
 
-function frame(left?: Landmark[], right?: Landmark[]): FrameLandmarks {
+function frame(left?: Landmark[], right?: Landmark[]): HandLandmarksPerFrame {
   const handLandmarks: Array<{ landmarks: Landmark[] } | null> = [];
   if (left !== undefined) handLandmarks.push(hand(left));
   else handLandmarks.push(null);
   if (right !== undefined) handLandmarks.push(hand(right));
   else handLandmarks.push(null);
-  return { handLandmarks: handLandmarks as unknown as FrameLandmarks["handLandmarks"] };
+  return { handLandmarks: handLandmarks as unknown as [HandLandmarksPerFrame["handLandmarks"][0], HandLandmarksPerFrame["handLandmarks"][1]] };
 }
 
 test("preprocess output is a Float32Array of exact [1,60,126] size (7560 values)", () => {
@@ -48,7 +48,7 @@ test("neither hand present -> all-zero sequence (missing frame = zero-padded)", 
   const out = landmarksToFloat32([
     frame(), // no hands
     frame(undefined, undefined),
-    { handLandmarks: [] }, // missing handLandmarks entirely
+    { handLandmarks: [null, null] }, // missing handLandmarks entirely
   ]);
   assert.strictEqual(out.length, EXPECTED_LENGTH);
   for (let i = 0; i < out.length; i++) {

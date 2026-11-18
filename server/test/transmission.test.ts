@@ -194,6 +194,7 @@ after(async () => {
  *
  *  Returns the two message payloads (mobile->staff, staff->mobile) plus the
  *  session id so the caller can assert on them.
+ */
 async function runTwoClientExchange() {
   // ---- mobile client path (kiosk, unauthenticated) ----
   const pubTellers = await fetch(base + "/api/kiosk/tellers");
@@ -235,22 +236,7 @@ async function runTwoClientExchange() {
   check("mobile received session:connected", connectedPayload.sessionId === sessionId);
   check("mobile session status is CONNECTING", connectedPayload.status === "CONNECTING");
 
-  // Mobile sends a message over the socket.
-  mobileSocket.emit("message:send", { sessionId, text: "Hello from Deaf user", method: "sign" });
-
   // ---- staff client ----
-  const staffSessRes = await fetch(base + "/api/sessions", {
-    ...authHeader(staffTokenA),
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ tellerId: tellerId, method: "sign" }),
-  });
-  check("staff creates its own sessions list", staffSessRes.status === 200);
-  // staff picks the first free session it created.
-  const staffSessBody = await staffSessRes.json() as { sessions: Array<{ _id: string; teller: { _id: string } }> };
-  const staffSessionId = staffSessBody.sessions?.[0]?._id;
-  check("staff found its own session", !!staffSessionId);
-
   const staffSocket = ioClient(`${base}/signova`, {
     auth: { token: staffTokenA },
     transports: ["websocket"],
@@ -262,8 +248,12 @@ async function runTwoClientExchange() {
     setTimeout(() => reject(new Error("staff socket timeout")), 5000);
   });
 
-  // Staff must join the session room to receive message:new broadcasts.
+  // Staff must join the session room before the message is sent, so it
+  // receives the message:new broadcast in real time.
   staffSocket.emit("session:join", { sessionId });
+
+  // Mobile sends a message over the socket.
+  mobileSocket.emit("message:send", { sessionId, text: "Hello from Deaf user", method: "sign" });
 
   // Wait for message:new (mobile -> staff).
   const staffMsg = await new Promise<any>((resolve, reject) => {
@@ -411,12 +401,26 @@ test("transmission: low-confidence message emits translation:low to org tellers"
     setTimeout(() => reject(new Error("translation:low timeout")), 5000);
   });
 
-  staffSocket.emit("message:send", { sessionId, text: "Low confidence sign", method: "sign", confidence: 0.3 });
+  // The message must come from the Deaf-user (device) socket: the server
+  // only emits translation:low for USER-originated messages.
+  const deviceSocket = ioClient(`${base}/signova`, {
+    auth: { token: deviceToken },
+    transports: ["websocket"],
+    reconnection: false,
+  });
+  await new Promise<void>((resolve, reject) => {
+    deviceSocket.on("connect", () => resolve());
+    deviceSocket.on("connect_error", (e) => reject(e));
+    setTimeout(() => reject(new Error("device socket timeout")), 5000);
+  });
+  deviceSocket.emit("session:join", { sessionId });
+
+  deviceSocket.emit("message:send", { sessionId, text: "Low confidence sign", method: "sign", confidence: 0.3 });
 
   const lowPayload = await lowConfReceived;
   check("translation:low emitted to staff socket", true);
   check("translation:low has sessionId", lowPayload.sessionId === sessionId);
   check("translation:low confidence < 0.6", lowPayload.confidence < 0.6);
 
-  staffSocket.close();
+  deviceSocket.close();
 });

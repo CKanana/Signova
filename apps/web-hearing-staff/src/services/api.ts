@@ -268,16 +268,22 @@ export const api = {
       body: { status: "ENDED", endReason: "STAFF_ENDED" },
     }),
 
+  /* ---------- Session acceptance (staff) ---------- */
+
+  acceptSession: (sessionId: string) =>
+    request<{ session: SessionDetail }>(`/api/sessions/${sessionId}/accept`, {
+      method: "POST",
+      auth: true,
+    }),
+
   /* ---------- Messages ---------- */
 
   listMessages: (sessionId: string) =>
     request<{ messages: MessageRecord[] }>(`/api/sessions/${sessionId}/messages`),
 
-  sendMessage: (
-    sessionId: string,
-    body: { sender: "USER" | "STAFF"; text: string; method: "sign" | "text" | "speech" },
-  ) => request<{ message: MessageRecord }>(`/api/sessions/${sessionId}/messages`, {
-    method: "POST",
-    body,
-  }),
+  sendMessage: (sessionId: string) =>
+    request<{ session: SessionDetail }>(`/api/sessions/${sessionId}/messages`, {
+      method: "POST",
+      body: { sender: "STAFF", text: "" },
+    }),
 };

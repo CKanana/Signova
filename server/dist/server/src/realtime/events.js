@@ -14,6 +14,8 @@ export const S2C_MOBILE = {
     SESSION_REJECTED: "session:rejected",
     STAFF_MESSAGE: "staff:message",
     SESSION_ENDED: "session:ended",
+    ANIMATION_READY: "animation:ready",
+    MESSAGE_ANIMATION: "message:animation",
     ERROR: "error",
 };
 // Server → Staff dashboard

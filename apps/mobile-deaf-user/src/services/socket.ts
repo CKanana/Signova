@@ -28,6 +28,7 @@ export type SocketErrorPayload = { message: string };
 type Handlers = {
   onStaffMessage?: (m: StaffMessagePayload) => void;
   onSessionConnected?: (p: SessionConnectedPayload) => void;
+  onSessionActive?: (p: SessionConnectedPayload) => void;
   onSessionEnded?: (p: SessionEndedPayload) => void;
   onError?: (e: SocketErrorPayload) => void;
   onConnectionChange?: (connected: boolean) => void;
@@ -77,6 +78,7 @@ export function connectSocket(token: string, sessionId: string, handlers: Handle
   socket.on("session:connected", (p: SessionConnectedPayload) =>
     handlers.onSessionConnected?.(p),
   );
+  socket.on("session:active", (p: SessionConnectedPayload) => handlers.onSessionActive?.(p));
   socket.on("staff:message", (m: StaffMessagePayload) => handlers.onStaffMessage?.(m));
   socket.on("session:ended", (p: SessionEndedPayload) => handlers.onSessionEnded?.(p));
   socket.on("error", (e: SocketErrorPayload) => handlers.onError?.(e));

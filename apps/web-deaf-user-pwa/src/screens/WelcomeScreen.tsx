@@ -12,6 +12,12 @@ export function WelcomeScreen() {
 
   return (
     <div style={styles.container}>
+      {/* Blurred background image (restored original design). */}
+      <div style={styles.bgWrap}>
+        <img src="/assets/kenyan-deaf-user-signing.jpg" alt="" style={styles.bgImage} />
+        <div style={styles.bgScrim} />
+      </div>
+
       {/* Header — solid purple bar, reversed logo, hospital name (white). */}
       <header style={styles.header}>
         <img
@@ -111,6 +117,26 @@ const styles = {
     flexDirection: "column",
     overflowX: "hidden",
   } as React.CSSProperties,
+  bgWrap: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 0,
+    overflow: "hidden",
+  } as React.CSSProperties,
+  bgImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: "center",
+    filter: "blur(12px) brightness(0.75)",
+    transform: "scale(1.05)",
+  } as React.CSSProperties,
+  bgScrim: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 1,
+    background: "linear-gradient(180deg, rgba(255, 248, 220, 0.30) 0%, rgba(255, 248, 220, 0.45) 100%)",
+  } as React.CSSProperties,
   header: {
     background: "var(--purple-600)",
     color: "#FFFFFF",
@@ -120,12 +146,15 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    position: "relative",
+    zIndex: 10,
   } as React.CSSProperties,
   brandLogo: {
-    width: 36,
+    width: 40,
     height: "auto",
     display: "block",
     flexShrink: 0,
+    filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.3))",
   } as React.CSSProperties,
   brandText: {
     display: "flex",
@@ -170,6 +199,8 @@ const styles = {
     transition: "background 0.15s, border-color 0.15s",
   } as React.CSSProperties,
   main: {
+    position: "relative",
+    zIndex: 10,
     flex: 1,
     minHeight: 0,
     display: "flex",
@@ -186,6 +217,7 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     gap: 16,
+    position: "relative",
   } as React.CSSProperties,
   eyebrowPill: {
     display: "inline-flex",

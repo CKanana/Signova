@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
 import { ArrowRight, Globe, ChevronDown } from "lucide-react";
@@ -9,6 +9,8 @@ export function MethodSelectScreen() {
   const orgName = organisation?.name || "Kenyatta National Hospital";
   const orgShort = organisation?.shortName || "KNH";
   const currentLang = accessibility?.language || "English / KSL";
+
+  const [hoveredCard, setHoveredCard] = useState<"sign" | "text" | null>(null);
 
   const handleSelectSign = () => {
     setMethod("sign");
@@ -77,12 +79,18 @@ export function MethodSelectScreen() {
           <div style={styles.cardsContainer}>
             {/* Card 1 — Sign Language */}
             <article
-              style={mergeStyles(styles.card, styles.signCard)}
+              style={mergeStyles(
+                styles.card,
+                styles.signCard,
+                hoveredCard === "sign" ? styles.cardHover : undefined,
+              )}
               onClick={handleSelectSign}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSelectSign(); } }}
               aria-label="Continue with Sign Language using the camera"
+              onMouseEnter={() => setHoveredCard("sign")}
+              onMouseLeave={() => setHoveredCard(null)}
             >
               <div style={mergeStyles(styles.cardImagePanel, styles.signImagePanel)}>
                 <img src="/assets/kenyan-deaf-user-signing.jpg" alt="Person signing in sign language" style={styles.cardImage} />
@@ -113,12 +121,18 @@ export function MethodSelectScreen() {
 
             {/* Card 2 — Text Communication */}
             <article
-              style={mergeStyles(styles.card, styles.textCard)}
+              style={mergeStyles(
+                styles.card,
+                styles.textCard,
+                hoveredCard === "text" ? styles.cardHover : undefined,
+              )}
               onClick={handleSelectText}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSelectText(); } }}
               aria-label="Continue by typing your message"
+              onMouseEnter={() => setHoveredCard("text")}
+              onMouseLeave={() => setHoveredCard(null)}
             >
               <div style={mergeStyles(styles.cardImagePanel, styles.textImagePanel)}>
                 <img src="/assets/text-card-keyboard.png" alt="Text message on a phone" style={styles.cardImage} />
@@ -306,15 +320,21 @@ const styles = {
     position: "relative",
     borderRadius: "var(--radius-card)",
     overflow: "hidden",
-    border: "1px solid var(--border-soft)",
+    border: "2px solid var(--border-soft)",
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
-    background: "var(--cream-card)",
-    transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+    background: "transparent",
+    transition: "border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease",
+    boxSizing: "border-box",
   } as React.CSSProperties,
   signCard: {} as React.CSSProperties,
   textCard: {} as React.CSSProperties,
+  cardHover: {
+    border: "2px solid var(--purple-600)",
+    transform: "translateY(-4px)",
+    boxShadow: "var(--shadow)",
+  } as React.CSSProperties,
   cardImagePanel: {
     position: "relative",
     width: "100%",

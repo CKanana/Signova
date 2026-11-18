@@ -51,6 +51,19 @@ export interface MessageRecord {
   confidence?: number;
   isConfirmed: boolean;
   timestamp: string;
+  /** Phase 2: URL of the generated 2D SignBridge MP4 (null until generation completes). */
+  animationUrl: string | null;
+  /** Phase 2: async generation status: pending | generating | completed | failed. */
+  generationStatus: "pending" | "generating" | "completed" | "failed";
+  /** Phase 2: full animation object (optional, additive). */
+  animation?: {
+    status: "pending" | "ready" | "failed" | "skipped";
+    url: string | null;
+    durationMs: number | null;
+    requestedAt: string | null;
+    readyAt: string | null;
+    error: string | null;
+  } | null;
 }
 
 /** Response envelope from POST /api/sessions/:id/translate. */

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getOverviewHandler, getOrgSettingsHandler, updateOrgSettingsHandler, listStaffHandler, createStaffHandler, getStaffHandler, updateStaffHandler, setStaffActiveHandler, resetStaff2FAHandler, listPendingStaffHandler, listTellersHandler, getTellerHandler, createTellerHandler, updateTellerHandler, setTellerStatusHandler, assignStaffToTellerHandler, listSessionsHandler, getSessionHandler, listAuditLogsHandler, getAuditLogsCountHandler, } from "../controllers/adminController.js";
+import { getOverviewHandler, getOrgSettingsHandler, updateOrgSettingsHandler, listStaffHandler, createStaffHandler, getStaffHandler, updateStaffHandler, setStaffActiveHandler, resetStaff2FAHandler, resendStaffSetupHandler, listPendingStaffHandler, listTellersHandler, getTellerHandler, createTellerHandler, updateTellerHandler, setTellerStatusHandler, assignStaffToTellerHandler, listSessionsHandler, getSessionHandler, listAuditLogsHandler, getAuditLogsCountHandler, } from "../controllers/adminController.js";
 import { inviteStaffHandler, acceptInvitationHandler, acceptInvitationByIdHandler, resendInvitationHandler } from "../controllers/invitationController.js";
 import { acceptStaffSetupHandler, activateStaffSetupHandler } from "../controllers/staffSetupController.js";
 import { inviteLimiter } from "../../middleware/rateLimit.js";
@@ -24,6 +24,7 @@ router.get("/staff/:id", getStaffHandler);
 router.put("/staff/:id", updateStaffHandler);
 router.patch("/staff/:id/status", setStaffActiveHandler);
 router.post("/staff/:id/2fa/reset", resetStaff2FAHandler);
+router.post("/staff/:id/resend-setup", inviteLimiter, resendStaffSetupHandler);
 // Teller management
 router.get("/tellers", listTellersHandler);
 router.post("/tellers", createTellerHandler);

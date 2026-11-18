@@ -1,0 +1,407 @@
+/* ========================================================================
+   Signova design tokens — user PWA only.
+   
+   Palette: purple (#5B2A8C) + Corn Silk (#FFF8DC) + status colours.
+   Text on light surfaces is always --purple-800, --purple-600, --ink or
+   --text-2. White text only inside solid --purple-600 fills.
+   ======================================================================== */
+
+/* ------------------------------------------------------------------------
+   Canonical tokens (light theme only — user PWA is light-only)
+   ------------------------------------------------------------------------ */
+:root {
+  /* Brand — Signova purple */
+  --purple-800: #3B1A6E;
+  --purple-700: #4A2278;
+  --purple-600: #5B2A8C;
+  --purple-600-rgb: 91, 42, 140;
+
+  /* Neutrals */
+  --ink: #1E1B2E;
+  --text-2: #4B3B6B;
+  --cornsilk: #FFF8DC;
+  --cream-card: #FFFDF6;
+  --lavender: #EFE6FB;
+  --border-soft: #8E73C4;
+  --border-ctl: #9B7BD0;
+  --glow: #C9B4FF;
+
+  /* Status (status only — never theme colours) */
+  --success-text: #14532D;
+  --success-bg: #DCFCE7;
+  --success-dot: #16A34A;
+  --warning-text: #7A4B00;
+  --warning-bg: #FEF3C7;
+  --danger-text: #B42318;
+  --danger-bg: #FEE4E2;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px rgba(91, 42, 140, 0.35);
+
+  /* Typography — self-hosted sans stack, never falls back to Times */
+  --font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Radius */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow: 0 4px 16px rgba(59, 26, 110, 0.12);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Safe areas */
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-left: env(safe-area-inset-left);
+  --safe-right: env(safe-area-inset-right);
+
+  /* Layout */
+  --max-width: 1100px;
+
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------------
+   Legacy --signova-* aliases (existing code references these)
+   ------------------------------------------------------------------------ */
+:root {
+  /* Brand aliases */
+  --signova-primary: var(--purple-600);
+  --signova-primary-dark: var(--purple-800);
+  --signova-primary-soft: var(--lavender);
+  --signova-on-primary: #FFFFFF;
+  --signova-primary-rgb: var(--purple-600-rgb);
+
+  /* Surface aliases */
+  --signova-background: var(--cornsilk);
+  --signova-surface: var(--cream-card);
+  --signova-surface-elevated: var(--cream-card);
+
+  /* Text aliases */
+  --signova-text: var(--ink);
+  --signova-text-strong: var(--ink);
+  --signova-muted-text: var(--text-2);
+
+  /* Border aliases */
+  --signova-border: var(--border-soft);
+  --signova-border-strong: var(--border-ctl);
+
+  /* Semantics aliases */
+  --signova-success: var(--success-dot);
+  --signova-success-soft: var(--success-bg);
+  --signova-success-border: var(--success-bg);
+  --signova-warning: var(--warning-text);
+  --signova-warning-soft: var(--warning-bg);
+  --signova-warning-border: var(--warning-bg);
+  --signova-danger: var(--danger-text);
+  --signova-danger-soft: var(--danger-bg);
+  --signova-danger-border: var(--danger-bg);
+
+  --signova-focus: var(--purple-600);
+
+  /* Typography aliases */
+  --signova-font-heading: var(--font-family);
+  --signova-font-family: var(--font-family);
+
+  /* Radius aliases */
+  --signova-radius-control: var(--radius-control);
+  --signova-radius-panel: var(--radius-card);
+  --signova-radius-card: var(--radius-card);
+  --signova-radius-pill: var(--radius-pill);
+
+  /* Shadow aliases */
+  --signova-shadow-card: var(--shadow);
+  --signova-shadow-soft: var(--shadow);
+  --signova-shadow-medium: var(--shadow);
+  --signova-shadow-focus: var(--focus-ring);
+
+  /* Spacing aliases */
+  --signova-spacing-xs: var(--space-1);
+  --signova-spacing-sm: var(--space-2);
+  --signova-spacing-md: var(--space-3);
+  --signova-spacing-lg: var(--space-4);
+  --signova-spacing-xl: var(--space-5);
+
+  /* Layout aliases */
+  --signova-max-width: var(--max-width);
+  --signova-safe-top: var(--safe-top);
+  --signova-safe-bottom: var(--safe-bottom);
+  --signova-safe-left: var(--safe-left);
+  --signova-safe-right: var(--safe-right);
+}
+
+/* ------------------------------------------------------------------------
+   Base reset / typography
+   ------------------------------------------------------------------------ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--cornsilk);
+  color: var(--ink);
+  font-family: var(--font-family);
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Accessible focus — 3px visible ring on every interactive element. */
+:focus-visible {
+  outline: 3px solid var(--purple-600);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Visually hidden but accessible. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Reduced motion — kill all animation/transition. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Short page transitions (150-250ms). */
+.sn-fade {
+  transition: opacity 0.2s ease;
+}
+
+.sn-slide {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.sn-pressed:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Spinner. */
+.sn-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--border-soft);
+  border-top-color: var(--purple-600);
+  border-radius: 50%;
+  animation: sn-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.sn-spinner--sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2.5px;
+}
+
+@keyframes sn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Subtle glow ring for recognition feedback — never hides hands. */
+.sn-glow-ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--purple-600);
+  box-shadow: 0 0 12px var(--glow);
+  flex-shrink: 0;
+  animation: sn-pulse 2s ease-in-out infinite;
+}
+
+@keyframes sn-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--purple-600-rgb), 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--purple-600-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--purple-600-rgb), 0);
+  }
+}
+
+/* Progress tracker — shape + colour, not colour alone. */
+.sn-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.sn-progress__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sn-progress__dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--border-soft);
+  background: var(--cream-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sn-progress__dot--completed {
+  border-color: var(--purple-600);
+  background: var(--purple-600);
+}
+
+.sn-progress__dot--current {
+  border-color: var(--purple-600);
+  background: var(--cream-card);
+  box-shadow: 0 0 0 8px rgba(var(--purple-600-rgb), 0.22);
+  position: relative;
+  width: 14px;
+  height: 14px;
+}
+
+.sn-progress__dot--current::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--purple-600);
+}
+
+.sn-progress__dot--upcoming {
+  border-color: var(--border-ctl);
+  background: var(--cream-card);
+}
+
+.sn-progress__dot svg {
+  width: 14px;
+  height: 14px;
+  stroke: #FFFFFF;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.sn-progress__label {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-align: center;
+}
+
+.sn-progress__label--completed {
+  color: var(--ink);
+}
+
+.sn-progress__label--current {
+  color: var(--purple-800);
+}
+
+.sn-progress__label--upcoming {
+  color: var(--text-2);
+}
+
+.sn-progress__arrow {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-2);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* Typographic scale helpers. */
+.sn-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--purple-800);
+}
+
+.sn-h1 {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 40px);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--purple-800);
+}
+
+.sn-h2 {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 28px);
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--purple-800);
+}
+
+.sn-body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.sn-body--sm {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.sn-text-2 {
+  color: var(--text-2);
+}

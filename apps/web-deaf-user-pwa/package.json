@@ -13,6 +13,7 @@
   "dependencies": {
     "@litertjs/core": "^2.6.0",
     "@mediapipe/tasks-vision": "^1.2.3",
+    "@signova/web-deaf-user-pwa": "file:",
     "clsx": "^2.1.1",
     "lucide-react": "^1.72.0",
     "react": "^19.3.0",

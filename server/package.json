@@ -15,12 +15,16 @@
     "seed:test:local": "NODE_ENV=test MONGODB_URI=mongodb://127.0.0.1:27018/signova_test tsx src/seed/run.ts",
     "staff:list-pending": "tsx src/scripts/manageStaff.ts list-pending",
     "staff:approve": "tsx src/scripts/manageStaff.ts approve",
-    "test": "node --test --import tsx test/**/*.test.ts"
+    "test": "node --test --import tsx test/**/*.test.ts",
+    "signbridge:start": "cd signbridge-service && .venv\\Scripts\\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8001",
+    "signbridge:stop": "taskkill /F /IM python.exe /T",
+    "signbridge:health": "powershell -c \"try { $r = Invoke-RestMethod -Uri http://127.0.0.1:8001/health -TimeoutSec 5; Write-Host $r } catch { Write-Host 'signbridge service down' }\""
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "dependencies": {
+    "@signova/server": "file:",
     "argon2": "^0.41.1",
     "cors": "^2.8.5",
     "express": "^5.0.1",

@@ -26,9 +26,22 @@ const envSchema = z.object({
     // Optional: pin the organization served to mobile kiosks when more than
     // one organization exists in the database. Falls back to the first active org.
     SIGNOVA_ORG_ID: z.string().optional(),
+    // ---- Text-to-ASL animation service (SignBridge) integration ----
+    // The standalone SignBridge FastAPI service (signbridge-service) renders
+    // the 2D signing MP4. These knobs gate and throttle that work.
+    SIGNBRIDGE_ENABLED: z.coerce.boolean().default(false),
+    SIGNBRIDGE_URL: z.string().default("http://127.0.0.1:8001"),
+    SIGNBRIDGE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    SIGNBRIDGE_MAX_CHARS: z.coerce.number().int().positive().default(280),
+    // Seconds. Old videos are deleted after this retention window.
+    SIGNBRIDGE_VIDEO_RETENTION_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 3600),
+    // Seconds. Silent cool-down after the circuit opens before a fresh call.
+    SIGNBRIDGE_CIRCUIT_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
     // --- Password-reset email (Gmail SMTP) — all optional at boot ---
     // If unconfigured, the server runs normally but cannot deliver reset
     // emails; the forgot-password endpoint fails safely without them.
+    // Use a Gmail APP PASSWORD (not your account password):
+    //   Google Account → Security → 2-Step Verification → App passwords
     SMTP_HOST: z.string().default("smtp.gmail.com"),
     SMTP_PORT: z.coerce.number().int().positive().default(587),
     SMTP_USER: z.string().optional(),
@@ -153,6 +166,13 @@ function getConfig() {
         appPublicBaseUrl: raw.APP_PUBLIC_BASE_URL.trim().replace(/\/+$/, ""),
         passwordResetTtlMinutes: raw.PASSWORD_RESET_TTL_MINUTES,
         BOOTSTRAP_SETUP_TOKEN_TTL_MS: raw.BOOTSTRAP_SETUP_TOKEN_TTL_MS,
+        // ---- Text-to-ASL animation service (SignBridge) ----
+        signbridgeEnabled: raw.SIGNBRIDGE_ENABLED,
+        signbridgeUrl: raw.SIGNBRIDGE_URL,
+        signbridgeTimeoutMs: raw.SIGNBRIDGE_TIMEOUT_MS,
+        signbridgeMaxChars: raw.SIGNBRIDGE_MAX_CHARS,
+        signbridgeVideoRetentionSeconds: raw.SIGNBRIDGE_VIDEO_RETENTION_SECONDS,
+        signbridgeCircuitCooldownSeconds: raw.SIGNBRIDGE_CIRCUIT_COOLDOWN_SECONDS,
         google: {
             clientId: raw.GOOGLE_CLIENT_ID,
             clientSecret: raw.GOOGLE_CLIENT_SECRET,
@@ -182,7 +202,13 @@ export const config = {
     get totpEncryptionKey() { return getConfig().totpEncryptionKey; },
     get appName() { return getConfig().appName; },
     get lowConfidenceThreshold() { return getConfig().lowConfidenceThreshold; },
-    get orgId() { return getConfig().orgId; },
+    // ---- SignBridge animation service ----
+    get signbridgeEnabled() { return getConfig().signbridgeEnabled; },
+    get signbridgeUrl() { return getConfig().signbridgeUrl; },
+    get signbridgeTimeoutMs() { return getConfig().signbridgeTimeoutMs; },
+    get signbridgeMaxChars() { return getConfig().signbridgeMaxChars; },
+    get signbridgeVideoRetentionSeconds() { return getConfig().signbridgeVideoRetentionSeconds; },
+    get signbridgeCircuitCooldownSeconds() { return getConfig().signbridgeCircuitCooldownSeconds; },
     get smtp() { return getConfig().smtp; },
     get adminPortalUrl() { return getConfig().adminPortalUrl; },
     get passwordResetBaseUrl() { return getConfig().passwordResetBaseUrl; },

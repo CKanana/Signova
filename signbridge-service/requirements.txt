@@ -1,0 +1,13 @@
+# SignBridge service dependencies (Phase 1)
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.6.0
+
+# SignBridge pipeline (reused by animation_service.py via SIGNBRIDGE_ROOT)
+openai-whisper>=20250625
+spacy>=3.8.0
+# Full opencv-python (non-headless) so cv2.imshow exists and can be patched
+# to a no-op by animation_service.py for headless operation.
+opencv-python>=4.10.0
+numpy>=2.0.0
+scipy>=1.14.0

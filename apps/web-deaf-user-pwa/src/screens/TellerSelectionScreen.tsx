@@ -6,6 +6,7 @@ import { ArrowRight, Check, MapPin, Users } from "lucide-react";
 export function TellerSelectionScreen() {
   const { tellers, selectTeller, loadTellers, isLoadingTellers, isCreatingSession, error, organisation } = useSession();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredTellerId, setHoveredTellerId] = useState<string | null>(null);
 
   const availableTellers = tellers.filter((t) => t.status === "FREE");
 
@@ -119,10 +120,11 @@ export function TellerSelectionScreen() {
               {availableTellers.map((teller) => (
                 <article
                   key={teller._id}
-                  style={mergeStyles(
-                    styles.tellerCard,
-                    selectedId === teller._id ? styles.tellerCardSelected : undefined,
-                  )}
+                style={mergeStyles(
+                  styles.tellerCard,
+                  selectedId === teller._id ? styles.tellerCardSelected : undefined,
+                  hoveredTellerId === teller._id ? styles.tellerCardHover : undefined,
+                )}
                   onClick={() => handleSelect(teller._id)}
                   role="radio"
                   aria-checked={selectedId === teller._id}
@@ -134,6 +136,8 @@ export function TellerSelectionScreen() {
                       handleSelect(teller._id);
                     }
                   }}
+                  onMouseEnter={() => setHoveredTellerId(teller._id)}
+                  onMouseLeave={() => setHoveredTellerId(null)}
                 >
                   <div style={styles.avatar}>
                     {getInitials(teller.name)}
@@ -424,16 +428,21 @@ const styles = {
     gap: 14,
     padding: 16,
     borderRadius: "var(--radius-card)",
-    border: "1px solid var(--border-soft)",
-    background: "var(--cream-card)",
+    border: "2px solid var(--border-soft)",
+    background: "transparent",
     cursor: "pointer",
-    transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+    transition: "border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease",
     width: "100%",
+    boxSizing: "border-box",
   } as React.CSSProperties,
   tellerCardSelected: {
-    borderColor: "var(--purple-600)",
-    borderWidth: 2,
+    border: "2px solid var(--purple-600)",
     boxShadow: "0 0 0 3px rgba(var(--purple-600-rgb), 0.18)",
+  } as React.CSSProperties,
+  tellerCardHover: {
+    border: "2px solid var(--purple-600)",
+    transform: "translateY(-4px)",
+    boxShadow: "var(--shadow)",
   } as React.CSSProperties,
   avatar: {
     width: 56,

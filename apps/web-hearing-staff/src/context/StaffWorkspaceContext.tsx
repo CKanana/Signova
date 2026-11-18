@@ -8,7 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, ApiError, type SessionDetail, type StaffUser, type StaffTeller } from "../services/api";
+import { api, type SessionDetail, type StaffUser, type StaffTeller } from "../services/api";
+import { ApiError } from "../services/api";
 import { useStaffAuth } from "./AuthContext";
 import {
   connectStaffSocket,
@@ -389,8 +390,9 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const acceptRequest = useCallback(async () => {
     if (!pendingRequest) return;
+    await api.acceptSession(pendingRequest.sessionId);
     await loadSessionIntoView(pendingRequest.sessionId);
-  }, [loadSessionIntoView, pendingRequest]);
+  }, [loadSessionIntoView, pendingRequest, api]);
 
   const declineRequest = useCallback(() => {
     setPendingRequest(null);

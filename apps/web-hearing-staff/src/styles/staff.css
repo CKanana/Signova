@@ -24,6 +24,80 @@
  * Dark mode is handled by [data-theme="dark"] on <html>.
  */
 
+/* Teller-local design tokens.
+ *
+ * Card tokens mirror the admin portal exactly so Teller cards look identical
+ * to admin cards. Non-card tokens keep the signova values so buttons, inputs,
+ * badges, messages and other non-card elements are unchanged.
+ */
+:root {
+  /* ---- Card surface & border (admin portal values) ---- */
+  --staff-card-bg: #FFF8DC;
+  --staff-card-border: #E3DCD3;
+  --staff-card-border-subtle: #EDE7DF;
+  --staff-card-radius: 12px;
+  --staff-card-shadow: 0 1px 2px rgba(28, 25, 33, 0.04);
+  --staff-card-gap: 16px;
+  --staff-card-header-padding: 16px 20px;
+  --staff-card-body-padding: 20px;
+
+  /* ---- All other tokens — same values as signova-tokens.css ---- */
+  --signova-primary: #5B2A8C;
+  --signova-primary-dark: #3B1A6E;
+  --signova-primary-soft: #EFE6FB;
+  --signova-on-primary: #FFFFFF;
+  --signova-primary-rgb: 91, 42, 140;
+
+  --signova-background: #FFF9EB;
+  --signova-surface: #FFFDF6;
+  --signova-surface-elevated: #FFFDF6;
+
+  --signova-text: #1E1B2E;
+  --signova-text-strong: #1E1B2E;
+  --signova-muted-text: #4B3B6B;
+
+  --signova-border: #DCCDF0;
+  --signova-border-strong: #9B7BD0;
+
+  --signova-success: #16A34A;
+  --signova-success-soft: #DCFCE7;
+  --signova-success-border: #DCFCE7;
+  --signova-success-chip: #DCFCE7;
+
+  --signova-warning: #7A4B00;
+  --signova-warning-soft: #FEF3C7;
+  --signova-warning-border: #F7D49E;
+  --signova-warning-chip: #FEF3C7;
+
+  --signova-danger: #B42318;
+  --signova-danger-soft: #FDECEA;
+  --signova-danger-border: #F5B8B4;
+  --signova-danger-chip: #FDECEA;
+
+  --signova-corn: #FFF9EB;
+  --signova-lavender-chip: #EFE6FB;
+  --signova-selected: #EFE6FB;
+  --signova-deep: #3B1A6E;
+
+  --signova-shadow-card: 0 4px 16px rgba(59, 26, 110, 0.12);
+  --signova-focus: #5B2A8C;
+
+  --font-heading: "Manrope", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+  --font-body: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+
+  --radius-control: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+}
+
 /* ============ Teller availability control (inside purple sidebar) ============ */
 /*
  * This panel lives in the sidebar footer which has a purple background.
@@ -93,10 +167,10 @@
 /* ============ Cards ============ */
 
 .staff-card {
-  border: 1.5px solid var(--signova-border);
-  border-radius: var(--radius-panel);
-  background: var(--signova-surface);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--staff-card-border);
+  border-radius: var(--staff-card-radius);
+  background: var(--staff-card-bg);
+  box-shadow: var(--staff-card-shadow);
 }
 
 .staff-card--selected {
@@ -109,8 +183,8 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1.5px solid var(--signova-border);
+  padding: var(--staff-card-header-padding);
+  border-bottom: 1px solid var(--staff-card-border-subtle);
 }
 
 .staff-card__title {
@@ -122,7 +196,7 @@
 }
 
 .staff-card__body {
-  padding: var(--spacing-lg);
+  padding: var(--staff-card-body-padding);
 }
 
 .staff-eyebrow {
@@ -253,11 +327,11 @@
 
 /* ============ Grid helpers ============ */
 
-.staff-grid { display: grid; gap: var(--spacing-md); }
+.staff-grid { display: grid; gap: var(--staff-card-gap); }
 .staff-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .staff-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
-.staff-stack { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.staff-stack { display: flex; flex-direction: column; gap: var(--staff-card-gap); }
 .staff-row   { display: flex; align-items: center; gap: var(--spacing-sm); }
 .staff-row--wrap    { flex-wrap: wrap; }
 .staff-row--between { justify-content: space-between; }

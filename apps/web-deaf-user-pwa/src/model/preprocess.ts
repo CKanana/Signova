@@ -31,6 +31,8 @@ export interface FrameLandmarks {
   handLandmarks?: HandLandmark[];
 }
 
+import type { HandLandmarksPerFrame } from "../../../../shared/types/session";
+
 /**
  * Number of landmarks per hand.
  */
@@ -118,7 +120,7 @@ function normalizeHandBlock(sequence: Float32Array, offset: number, written: Uin
  *   block 1 (right hand): buffer[i*126 + 63..125] = landmark x,y,z for k=0..20
  */
 export function landmarksToFloat32(
-  frames: FrameLandmarks[],
+  frames: HandLandmarksPerFrame[],
 ): Float32Array {
   const buf = new Float32Array(CLIP_LEN * VALUES_PER_FRAME);
   // Tracks which landmark slots were explicitly populated from a detected
@@ -138,8 +140,13 @@ export function landmarksToFloat32(
       const hand = hands[h];
       const base = h * VALUES_PER_HAND; // 0 for left, 63 for right
       if (hand) {
+        const lms = hand.landmarks;
+        if (!lms) {
+          // Hand present but landmark array missing -> leave zeros.
+          continue;
+        }
         for (let k = 0; k < LANDMARKS_PER_HAND; k++) {
-          const lm = hand.landmarks[k];
+          const lm = lms[k];
           if (!lm) {
             // Pad a missing landmark within a detected hand with zeros (left
             // unwritten so normalisation skips it).
@@ -172,6 +179,6 @@ export function landmarksToFloat32(
  * Validates the input shape and returns the number of frames we actually saw.
  * Pure, side-effect-free helper used in tests.
  */
-export function countFrames(frames: FrameLandmarks[]): number {
+export function countFrames(frames: HandLandmarksPerFrame[]): number {
   return frames.length;
 }

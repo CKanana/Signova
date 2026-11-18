@@ -3,11 +3,11 @@ import { useSession } from "../context/SessionContext";
 import { ArrowLeft, HelpCircle, AccessibilityIcon } from "lucide-react";
 
 export function ConnectingScreen() {
-  const { staff, connectToSession } = useSession();
+  const { staff, connectToSession, sessionId } = useSession();
 
   useEffect(() => {
-    connectToSession();
-  }, [connectToSession]);
+    if (sessionId) connectToSession();
+  }, [connectToSession, sessionId]);
 
   const counterNumber = staff?.counterNumber || "1";
   const statusText = `Waiting for Counter ${counterNumber} to accept the invite…`;

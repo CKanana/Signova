@@ -1,0 +1,9 @@
+{
+  "files": [
+    "/wasm-vision/vision_wasm_module_internal.js",
+    "/wasm-vision/vision_wasm_module_internal.wasm",
+    "/wasm-vision/vision_wasm_internal.js",
+    "/wasm-vision/vision_wasm_internal.wasm"
+  ],
+  "baseUrl": "."
+}

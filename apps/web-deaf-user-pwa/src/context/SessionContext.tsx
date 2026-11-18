@@ -17,6 +17,9 @@ import {
   OrganisationInfo,
   AccessibilitySettings,
   SessionContextValue,
+  HandLandmarksPerFrame,
+  HandInfo,
+  SignLatencyEntry,
 } from "../../../../shared/types/session";
 import { api, ApiError, setAuthToken, getAuthToken } from "../services/api";
 import { connectSocket, disconnectSocket, isConnected as socketIsConnected } from "../services/socket";
@@ -26,18 +29,12 @@ import type { Teller, TranslateResponse } from "../../../../shared/types/mobile"
 import {
   loadOnDeviceRecognizer,
   loadModelMetadata,
-  recogniseOnDevice,
   RecogniserBackend,
   type ModelMetadata,
 } from "../model/recogniser";
-import { landmarksToFloat32 } from "../model/preprocess";
-import { useHandRecorder } from "../hooks/useHandRecorder";
 import { useHandLandmarker } from "../hooks/useHandLandmarker";
 
-/** Toggle: on-device model (true) or the existing mock placeholder (false). */
 export const USE_MODEL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_USE_MODEL === "true");
-
-/** Read the config flag for the UI layer. */
 export const USE_MODEL_FOR_UI = USE_MODEL;
 
 const DEFAULT_ORG_PLACEHOLDER: OrganisationInfo = {
@@ -47,10 +44,6 @@ const DEFAULT_ORG_PLACEHOLDER: OrganisationInfo = {
   serviceName: "",
   counterLabel: "",
 };
-
-/* -------------------------------------------------------------------------- */
-/* Local UI types                                                              */
-/* -------------------------------------------------------------------------- */
 
 type UiMessage = Message;
 
@@ -87,11 +80,8 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   visualAlerts: true,
   reduceMotion: false,
   language: "English / KSL",
+  dataSaver: false,
 };
-
-/* -------------------------------------------------------------------------- */
-/* Context                                                                     */
-/* -------------------------------------------------------------------------- */
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
@@ -121,38 +111,111 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAULT_ACCESSIBILITY);
 
   const [recognitionBackend, setRecognitionBackend] = useState<RecogniserBackend>("mock");
-  const [isRecognising, setIsRecognising] = useState<boolean>(false);
-  const [recogniseResult, setRecogniseResult] = useState<
-    | { results: { sign: string; probability: number }[]; timingMs: number; top1: string }
+  const [isRecognising] = useState<boolean>(false);
+  const [recogniseResult, setRecogniseResultState] = useState<
+    | { results: { sign: string; probability: number }[]; timingMs: number }
     | null
   >(null);
   const [recogniseError, setRecogniseError] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [deliveryStates, setDeliveryStates] = useState<
+    Record<string, "sending" | "sent" | "delivered" | "failed">
+  >({});
 
-  const {
-    isRecording,
-    start: startRecording,
-    stop: stopRecording,
-    reset: resetRecorder,
-    pushFrame,
-    stop,
-  } = useHandRecorder(
-    (frame) => {
-      // Called each time the pipeline supplies a frame. Track whether any hand
-      // is present so the UI can show a real detection state while the user is
-      // in the live signing step (not only once recording has started).
-      setIsHandsDetected(!!frame.handLandmarks?.length);
-    },
-    async () => {
-      // The stop action fires. Finalise the clip (stop() builds the
-      // Float32Array[60,126] from the actual per-frame landmarks), run the
-      // model, and hand the top-5 to the confirm/uncertain screens.
-      // Async-safe so the UI never blocks the existing stop action.
-      const rec = stop();
-      void runRecogniseOnStop(rec ? rec.sequence : null);
-    },
-  );
+  const [endedByStaffWhileWaiting] = useState<boolean>(false);
+
+  const [handLandmarks, setHandLandmarks] = useState<HandLandmarksPerFrame | null>(null);
+
+  const frameListenerRef = useRef<((frame: HandLandmarksPerFrame, handInfos: HandInfo[]) => void) | null>(null);
+
+  const latencyLogRef = useRef<SignLatencyEntry[]>([]);
+  const debugStatsRef = useRef<{
+    fps: number;
+    detectMs: number;
+    inferMs: number;
+    bufferLen: number;
+    top5: { sign: string; probability: number }[];
+  }>({ fps: 0, detectMs: 0, inferMs: 0, bufferLen: 0, top5: [] });
+
+  const fpsTimesRef = useRef<number[]>([]);
+  const detectTimesRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    setDebugMode(typeof location !== "undefined" && location.search.includes("debug=1"));
+  }, []);
+
+  const setFrameListener = useCallback((cb: (frame: HandLandmarksPerFrame, handInfos: HandInfo[]) => void) => {
+    frameListenerRef.current = cb;
+  }, []);
+
+  const recordDebugFrame = useCallback((detectMs: number) => {
+    const now = performance.now();
+    fpsTimesRef.current.push(now);
+    detectTimesRef.current.push(detectMs);
+    const cutoff = now - 1000;
+    while (fpsTimesRef.current.length && fpsTimesRef.current[0] < cutoff) fpsTimesRef.current.shift();
+    while (detectTimesRef.current.length && detectTimesRef.current[0] < cutoff) detectTimesRef.current.shift();
+    debugStatsRef.current.fps = fpsTimesRef.current.length;
+    debugStatsRef.current.detectMs =
+      detectTimesRef.current.length > 0
+        ? detectTimesRef.current.reduce((a, b) => a + b, 0) / detectTimesRef.current.length
+        : 0;
+  }, []);
+
+  const recordSignLatency = useCallback((entry: Omit<SignLatencyEntry, "ts">) => {
+    latencyLogRef.current.push({ ts: Date.now(), ...entry });
+    if (latencyLogRef.current.length > 500) latencyLogRef.current.splice(0, latencyLogRef.current.length - 500);
+    if (typeof window !== "undefined") {
+      // eslint-disable-next-line @typescript-eslint/no-any
+      (window as any).__signovaLatencyLog = latencyLogRef.current.slice();
+    }
+  }, []);
+
+  const markLastLatencyAccepted = useCallback((method: "accept" | "chip" | "typed") => {
+    const last = latencyLogRef.current[latencyLogRef.current.length - 1];
+    if (last) {
+      last.accepted = true;
+      last.acceptMethod = method;
+      if (typeof window !== "undefined") {
+        // eslint-disable-next-line @typescript-eslint/no-any
+        (window as any).__signovaLatencyLog = latencyLogRef.current.slice();
+      }
+    }
+  }, []);
+
+  const exportLatencyCsv = useCallback((): string => {
+    const rows = latencyLogRef.current;
+    const header =
+      "ts,sessionId,state,framesRecorded,handFrames,top1Label,top1Prob,top2Label,top2Prob,top3Label,top3Prob,accepted,acceptMethod,model,signMs,preprocessMs,inferMs,renderMs,resultLatencyMs,valid";
+    if (!rows.length) return header + "\n";
+    const line = (e: SignLatencyEntry) =>
+      [
+        e.ts,
+        e.sessionId ?? "",
+        e.state,
+        e.framesRecorded,
+        e.handFrames,
+        JSON.stringify(e.top1Label ?? ""),
+        e.top1Prob ?? "",
+        JSON.stringify(e.top2Label ?? ""),
+        e.top2Prob ?? "",
+        JSON.stringify(e.top3Label ?? ""),
+        e.top3Prob ?? "",
+        e.accepted ? 1 : 0,
+        e.acceptMethod ?? "",
+        e.model,
+        e.signMs ?? "",
+        e.preprocessMs ?? "",
+        e.inferMs ?? "",
+        e.renderMs ?? "",
+        e.resultLatencyMs ?? "",
+        e.valid ? 1 : 0,
+      ].join(",");
+    return [header, ...rows.map(line)].join("\n") + "\n";
+  }, []);
 
   const {
     initialise: initialiseLandmarker,
@@ -162,7 +225,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     error: landmarkerError,
     processFrame,
   } = useHandLandmarker({
-    onFrame: pushFrame,
+    onFrame: (frame, handInfos) => {
+      frameListenerRef.current?.(frame, handInfos);
+      setHandLandmarks(frame);
+
+      const hands = frame.handLandmarks ?? [];
+      const present = hands.some((h) => h !== null && h.landmarks && h.landmarks.length > 0);
+      setIsHandsDetected(present);
+    },
   });
 
   const runModelRef = useRef<{
@@ -172,20 +242,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!USE_MODEL) return;
-
     let cancelled = false;
-
     const init = async () => {
       setRecogniseError(null);
       try {
         const recogniser = await loadOnDeviceRecognizer();
         if (cancelled) return;
-
         if (!recogniser) {
           setRecognitionBackend("mock");
           return;
         }
-
         setRecognitionBackend("model");
         const metadata = await loadModelMetadata();
         if (cancelled) return;
@@ -199,64 +265,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-
     void init();
-
     return () => {
       cancelled = true;
     };
   }, [USE_MODEL]);
 
-  const runRecogniseOnStop = useCallback(
-    async (clipSequence: Float32Array | null) => {
-      if (!USE_MODEL) return;
-
-      try {
-        const model = runModelRef.current;
-        if (!model) {
-          setRecogniseError("Model stack not initialised.");
-          setRecognitionBackend("mock");
-          setIsRecognising(false);
-          return;
-        }
-        const { metadata } = model;
-        setRecogniseResult(null);
-
-        // Use the real clip captured by the recorder. `clipSequence` is the
-        // Float32Array produced by the recorder's stop() from the actual
-        // per-frame landmarks; it has the exact `[1, 60, 126]` contract and
-        // is 7560 values long. Do NOT infer on a zero-filled placeholder.
-        const sequence =
-          clipSequence ??
-          landmarksToFloat32([]); // only falls back to an all-zero clip if never recorded
-        const result = await recogniseOnDevice(sequence, metadata, false);
-
-        if (!result) {
-          setRecogniseError("On-device inference returned no result.");
-          setRecognitionBackend("mock");
-          setIsRecognising(false);
-          return;
-        }
-
-        setRecogniseResult({
-          results: result.results,
-          timingMs: result.timingMs,
-          top1: result.results[0]?.sign ?? "unknown",
-        });
-        setIsRecognising(false);
-      } catch (err) {
-        setRecogniseError(`On-device inference failed: ${(err as Error).message}`);
-        setRecognitionBackend("mock");
-        setIsRecognising(false);
-      }
+  const setRecogniseResult = useCallback(
+    (result: { results: { sign: string; probability: number }[]; timingMs: number } | null) => {
+      setRecogniseResultState(result);
     },
-    [USE_MODEL],
+    [],
   );
 
-  const bootstrapped = useRef(false);
-
-  const staff = staffFromTeller(currentTeller);
-  const accessibility = DEFAULT_ACCESSIBILITY;
+  const acceptSigned = useCallback(
+    async (text: string) => {
+      if (!sessionId) return;
+      setError(null);
+      try {
+        const confidence = recogniseResult?.results?.[0]?.probability ?? 0;
+        const { message } = await api.sendMessage(sessionId, {
+          sender: "USER",
+          text,
+          method: "sign",
+          confidence,
+          isConfirmed: true,
+          inputMethod: "sign",
+        });
+        const ui = mapBackendMessage(message);
+        setMessages((prev) => (prev.some((m) => m.id === ui.id) ? prev : [...prev, ui]));
+        setDeliveryStates((prev) => ({ ...prev, [ui.id]: "sent" }));
+        setTimeout(() => {
+          setDeliveryStates((prev) => ({ ...prev, [ui.id]: "delivered" }));
+        }, 800);
+        setRecogniseResult(null);
+      } catch (err) {
+        setError((err as Error).message ?? "Failed to send the signed message.");
+        setRecogniseResult(null);
+      }
+    },
+    [sessionId, recogniseResult],
+  );
 
   const goToStep = useCallback((nextStep: Step) => {
     setPreviousStep(step);
@@ -344,7 +393,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCurrentDraft("");
         setDetectedGlossState("");
         setConfidence(0);
-        // Bug 3: persist session so it survives reloads.
         try {
           localStorage.setItem("signova.session", JSON.stringify({
             sessionId: session._id,
@@ -352,6 +400,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             method,
             createdAt: Date.now(),
           }));
+          if (accessToken) {
+            localStorage.setItem("signova.accessToken", accessToken);
+          }
         } catch { /* localStorage unavailable */ }
         goToStep("waiting");
         return true;
@@ -372,9 +423,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setError("No session token available.");
       return;
     }
-
     const currentMethod = method;
-
     connectSocket(token, sessionId, {
       onSessionConnected: (payload) => {
         setIsConnected(true);
@@ -384,7 +433,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setJoinedTellerId(currentTeller?._id ?? null);
           setJoinedAt(Date.now());
           try { navigator.vibrate?.(100); } catch { /* vibrate not supported */ }
-          // Auto-route after ~2 seconds; WaitingScreen also shows a Continue button.
           setTimeout(() => {
             if (joinedTellerId && step === "waiting") {
               goToStep(currentMethod === "text" ? "text" : "live");
@@ -418,6 +466,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setSessionOwnerId(null);
         goToStep("waiting");
       },
+      onStaffMessage: (m) => {
+        setMessages((prev) => {
+          const alreadyAdded = prev.some((pm) => pm.id === m.id);
+          if (alreadyAdded) return prev;
+          return [...prev, mapBackendMessage(m)];
+        });
+        setStep((currentStep) => {
+          if (currentStep === "live") {
+            return "live";
+          }
+          if (currentStep === "conversation" || currentStep === "text") {
+            return "conversation";
+          }
+          return m.sender === "STAFF" ? "response" : "sent";
+        });
+      },
       onNewMessage: (m) => {
         setMessages((prev) => {
           const alreadyAdded = prev.some((pm) => pm.id === m.id);
@@ -425,11 +489,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return [...prev, mapBackendMessage(m)];
         });
         setStep((currentStep) => {
+          if (currentStep === "live") {
+            return "live";
+          }
           if (currentStep === "conversation" || currentStep === "text") {
             return "conversation";
           }
           return m.sender === "STAFF" ? "response" : "sent";
         });
+      },
+      onAnimation: (p) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === p.messageId
+              ? {
+                  ...m,
+                  animation: {
+                    status: p.status,
+                    url: p.url,
+                    durationMs: p.durationMs,
+                    requestedAt: m.animation?.requestedAt ?? null,
+                    readyAt: m.animation?.readyAt ?? null,
+                    error: m.animation?.error ?? null,
+                  },
+                }
+              : m,
+          ),
+        );
       },
       onSessionEnded: () => {
         setIsConnected(false);
@@ -442,7 +528,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       onError: (e) => setError(e.message),
       onConnectionChange: (connected) => setIsConnected(connected),
     });
-
     setTimeout(() => {
       if (!socketIsConnected()) {
         setError("Could not connect to the service.");
@@ -451,9 +536,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }, 6000);
   }, [sessionId, method, goToStep, initialiseLandmarker]);
 
-  /* ------------------------------------------------------------------ */
-  /* Auto-connect on entering "waiting", with a fallback poller         */
-  /* ------------------------------------------------------------------ */
   const waitingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const WAITING_POLL_MS = 5000;
 
@@ -482,7 +564,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [step, sessionId, method, goToStep, initialiseLandmarker, clearWaitingPoll]);
 
-  // Connect the socket when we enter "waiting" with a sessionId.
   useEffect(() => {
     if (sessionId && step === "waiting") {
       connectToSession();
@@ -494,7 +575,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => clearWaitingPoll();
   }, [sessionId, step, connectToSession, checkWaitingStatus, clearWaitingPoll]);
 
-  // Re-check session status when the tab regains focus (missed socket event).
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && step === "waiting") {
@@ -507,11 +587,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const requestTranslationResult = useCallback(async (): Promise<TranslateResponse | null> => {
     if (!sessionId) return null;
-
     if (USE_MODEL && recogniseResult && recogniseResult.results.length > 0) {
       const top1 = recogniseResult.results[0];
-      // A placeholder class mapped to "unknown" is not a real translation,
-      // regardless of its softmax probability. Always treat it as uncertain.
       const isUnmapped = top1.sign === "unknown";
       const isLowConfidence = isUnmapped || top1.probability < 0.4;
       setDetectedGlossState(top1.sign);
@@ -532,7 +609,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       };
       return syntheticResponse;
     }
-
     setIsTranslating(true);
     setError(null);
     try {
@@ -556,20 +632,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!sessionId) return;
       setError(null);
       try {
+        const confidenceValue =
+          recogniseResult?.results?.[0]?.probability ?? confidence;
         const { message } = await api.sendMessage(sessionId, {
           sender: "USER",
           text,
           method,
-          confidence: confidence || undefined,
+          confidence: confidenceValue || undefined,
           isConfirmed: true,
+          inputMethod: method === "text" ? "text" : "sign",
         });
-        setMessages((prev) => [...prev, mapBackendMessage(message)]);
-        goToStep("sent");
+        const ui = mapBackendMessage(message);
+        setMessages((prev) => (prev.some((m) => m.id === ui.id) ? prev : [...prev, ui]));
+        setDeliveryStates((prev) => ({ ...prev, [ui.id]: "sent" }));
+        setTimeout(() => {
+          setDeliveryStates((prev) => ({ ...prev, [ui.id]: "delivered" }));
+        }, 800);
+        goToStep("live");
       } catch (err) {
         setError(describeError(err));
+        throw err;
       }
     },
-    [sessionId, method, confidence, goToStep],
+    [sessionId, method, confidence, recogniseResult, goToStep],
   );
 
   const sendTextMessage = useCallback(
@@ -579,8 +664,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         const { emitMessage } = await import("../services/socket");
         emitMessage(sessionId, { text, method: "text", isConfirmed: true });
-        // Optimistic add; the server echoes it back via message:new to the
-        // session room, which the onStaffMessage-style confirmation handles.
         setMessages((prev) => [...prev, mapBackendMessage({ _id: `opt-${Date.now()}`, session: sessionId, sender: "USER", text, method: "text", confidence: undefined, isConfirmed: true, timestamp: new Date().toISOString() })]);
         goToStep("conversation");
       } catch (err) {
@@ -592,8 +675,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const endSession = useCallback(async (): Promise<void> => {
     void destroyLandmarker();
-    // Bug 3: clear stored session so it does not resume after End.
     try { localStorage.removeItem("signova.session"); } catch { /* noop */ }
+    try { localStorage.removeItem("signova.accessToken"); } catch { /* noop */ }
     if (sessionId) {
       try {
         await api.endSession(sessionId);
@@ -609,8 +692,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const resetSession = useCallback(() => {
     void destroyLandmarker();
-    // Bug 3: clear stored session on reset.
     try { localStorage.removeItem("signova.session"); } catch { /* noop */ }
+    try { localStorage.removeItem("signova.accessToken"); } catch { /* noop */ }
     disconnectSocket();
     setAuthToken(null);
     setSessionId(null);
@@ -627,43 +710,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     goToStep("welcome");
   }, [goToStep]);
 
-  /**
-   * Restore the Deaf user's existing session on initialization / refresh.
-   *
-   * Fetches the latest CONNECTING/ACTIVE session from the backend
-   * (GET /api/sessions/current). All state comes from the backend — never
-   * from localStorage or React component state — so a page refresh resumes
-   * the correct session without creating a duplicate.
-   */
   const restoreCurrentSession = useCallback(async () => {
     const deviceId = await getDeviceId().catch(() => null);
     if (!deviceId) return;
-
-    // Ensure a Deaf-user identity exists for this device so the backend can
-    // correlate the token with the session.
     try {
       const { session } = await api.getCurrentSession();
       if (!session) return;
-
       setSessionId(session._id);
       setSessionStatus(session.status as "CONNECTING" | "ACTIVE" | "CANCELLED" | "ENDED");
       setSessionOwnerId(session.deafUser.toString());
-
-      // Re-fetch teller so the UI can show who the session is with.
+      const restoredStart = new Date(session.startedAt).getTime();
+      if (Number.isFinite(restoredStart)) {
+        setJoinedAt(restoredStart);
+      }
       const tellersResp = await api.getTellers();
       const teller = tellersResp.tellers.find(
         (t) => String(t._id) === String(session.teller),
       );
       if (teller) setCurrentTeller(teller);
-
-      // Load persisted messages.
       const { messages: records } = await api.getMessages(session._id);
       const ui = records.map((r: any) => mapBackendMessage(r));
       setMessages(ui);
-
       if (session.status === "ACTIVE") {
         goToStep(method === "text" ? "text" : "live");
-        // Reconnect the socket to the existing session room.
         const token = getAuthToken();
         if (token) {
           connectSocket(token, session._id, {
@@ -673,12 +742,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 void initialiseLandmarker();
               }
             },
+            onStaffMessage: (m) => {
+              setMessages((prev) => {
+                const alreadyAdded = prev.some((pm) => pm.id === m.id);
+                if (alreadyAdded) return prev;
+                return [...prev, mapBackendMessage(m)];
+              });
+              setStep((currentStep) => {
+                if (currentStep === "live") {
+                  return "live";
+                }
+                if (currentStep === "conversation" || currentStep === "text") {
+                  return "conversation";
+                }
+                return m.sender === "STAFF" ? "response" : "sent";
+              });
+            },
             onNewMessage: (m) => {
               setMessages((prev) => {
                 const alreadyAdded = prev.some((pm) => pm.id === m.id);
                 if (alreadyAdded) return prev;
                 return [...prev, mapBackendMessage(m)];
               });
+            },
+            onAnimation: (p) => {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === p.messageId
+                    ? {
+                        ...m,
+                        animation: {
+                          status: p.status,
+                          url: p.url,
+                          durationMs: p.durationMs,
+                          requestedAt: m.animation?.requestedAt ?? null,
+                          readyAt: m.animation?.readyAt ?? null,
+                          error: m.animation?.error ?? null,
+                        },
+                      }
+                    : m,
+                ),
+              );
             },
             onSessionEnded: () => {
               setIsConnected(false);
@@ -693,12 +797,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           });
         }
       } else {
-        // CONNECTING — waiting for staff to accept.
         goToStep("waiting");
       }
     } catch (err) {
-      // Non-fatal: recovery is best-effort. The user can always start a new
-      // session from the welcome screen. Try localStorage fallback (Bug 3).
       try {
         const raw = localStorage.getItem("signova.session");
         if (raw) {
@@ -708,7 +809,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             setSessionStatus("CONNECTING");
             setSessionOwnerId(stored.sessionId);
             setMethod(stored.method);
-            // Teller will be re-fetched when the server is back.
           }
         }
       } catch { /* localStorage unavailable or corrupt */ }
@@ -738,6 +838,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setIsHandsDetected(detected);
   }, []);
 
+  const retryAnimation = useCallback(async (sessionId: string, messageId: string) => {
+    await api.retryAnimation(sessionId, messageId);
+  }, []);
+
   const sendMessage = useCallback(
     (text: string, sendMethod: "sign" | "text" = "sign") => {
       if (sendMethod === "text") {
@@ -762,17 +866,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     ]);
   }, []);
 
-  const updateAccessibility = useCallback(() => {
-    // Accessibility preferences are local for now.
+  const updateAccessibility = useCallback((settings: Partial<AccessibilitySettings>) => {
+    setAccessibility((prev) => ({ ...prev, ...settings }));
   }, []);
 
   const updateOrganisation = useCallback(() => {
-    // Admin-only on the backend; no-op on the kiosk.
+    // Accessibility preferences are local for now.
   }, []);
 
+  const bootstrapped = useRef(false);
   useEffect(() => {
     if (bootstrapped.current) return;
     bootstrapped.current = true;
+    try {
+      const storedToken = localStorage.getItem("signova.accessToken");
+      if (storedToken) setAuthToken(storedToken);
+    } catch { /* localStorage unavailable */ }
     void loadOrganisation();
     void loadTellers();
     void restoreCurrentSession();
@@ -787,10 +896,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     detectedGloss,
     confidence,
     isHandsDetected,
+    handLandmarks,
     isConnected,
+    sessionId,
     sessionStatus,
     sessionOwnerId,
-    staff,
+    staff: staffFromTeller(currentTeller),
     joinedTellerId,
     joinedAt,
     organisation: organisation ?? DEFAULT_ORG_PLACEHOLDER,
@@ -803,6 +914,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setDetectedGloss,
     setHandsDetected: setHandsDetectedFn,
     sendMessage,
+    retryAnimation,
     receiveStaffMessage,
     updateAccessibility,
     updateOrganisation,
@@ -832,10 +944,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     initialiseLandmarker,
     destroyLandmarker,
     processFrame,
-    startRecording,
-    stopRecording,
-    isRecording,
-    resetRecorder,
+    debugMode,
+    debugStats: debugStatsRef.current,
+    setFrameListener,
+    recordDebugFrame,
+    exportLatencyCsv,
+    recordSignLatency,
+    markLastLatencyAccepted,
+    setRecogniseResult,
+    deliveryStates,
+    acceptSigned,
+    endedByStaffWhileWaiting,
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
@@ -864,6 +983,16 @@ function mapBackendMessage(m: {
   confidence?: number;
   isConfirmed: boolean;
   timestamp: string;
+  animationUrl?: string | null;
+  generationStatus?: "pending" | "generating" | "completed" | "failed";
+  animation?: {
+    status: "pending" | "ready" | "failed" | "skipped";
+    url: string | null;
+    durationMs: number | null;
+    requestedAt: string | null;
+    readyAt: string | null;
+    error: string | null;
+  } | null;
 }): UiMessage {
   return {
     id: (m.id ?? m._id) as string,
@@ -872,6 +1001,9 @@ function mapBackendMessage(m: {
     timestamp: m.timestamp,
     method: m.method as UiMessage["method"],
     confidence: m.confidence,
+    animationUrl: m.animationUrl ?? null,
+    generationStatus: m.generationStatus ?? "pending",
+    animation: m.animation ?? null,
   };
 }
 

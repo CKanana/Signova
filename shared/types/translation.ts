@@ -40,6 +40,10 @@ export interface MessageRecord {
   confidence?: number;
   isConfirmed: boolean;
   timestamp: string;
+  /** Phase 2: URL of the generated 2D SignBridge MP4 (null until generation completes). */
+  animationUrl: string | null;
+  /** Phase 2: async generation status: pending | generating | completed | failed. */
+  generationStatus: "pending" | "generating" | "completed" | "failed";
 }
 
 /** Public user returned by the auth endpoints (shared by staff + admin apps). */
@@ -52,19 +56,4 @@ export interface PublicUser {
   avatar?: string;
   twoFactorEnabled: boolean;
   isActive: boolean;
-}
-
-/** Staff user summary returned by the admin staff endpoints. Reuses the shared
- *  shape so the admin portal and the server agree on `id` vs Mongoose `_id`. */
-export interface AdminUserSummary {
-  id: string;
-  organization: string;
-  role: Role;
-  name: string;
-  email?: string;
-  avatar?: string;
-  twoFactorEnabled: boolean;
-  twoFactorConfirmedAt?: string;
-  isActive: boolean;
-  createdAt: string;
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import * as adminService from "../services/adminService.js";
+import * as invitationService from "../services/invitationService.js";
 import { recordAudit } from "../../services/auditService.js";
 import { paramId } from "../../utils/params.js";
 import { Organization } from "../../models/organization.js";
@@ -202,6 +203,11 @@ export async function setStaffActiveHandler(req, res) {
 export async function resetStaff2FAHandler(req, res) {
     await adminService.resetStaff2FA(req.auth.orgId, paramId(req), req.auth.sub, req);
     res.json({ ok: true });
+}
+export async function resendStaffSetupHandler(req, res) {
+    const userId = paramId(req);
+    const result = await invitationService.resendStaffSetup(req.auth.orgId, userId, req.auth.sub, req);
+    res.json(result);
 }
 export async function listPendingStaffHandler(req, res) {
     const { items, total } = await adminService.listStaff(req.auth.orgId, {

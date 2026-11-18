@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 
 export function WaitingScreen() {
   const {
@@ -30,6 +30,10 @@ export function WaitingScreen() {
 
   const handleBack = () => {
     goToStep("method");
+  };
+
+  const handleContinue = () => {
+    goToStep(joinedTellerId ? "live" : "method");
   };
 
   return (
@@ -127,7 +131,7 @@ export function WaitingScreen() {
           {/* Joined banner — shown when teller accepts (Bug 1). */}
           {showJoinedBanner && (
             <div style={styles.joinedBanner} role="status" aria-live="polite">
-              <svg width="20" height="20" fill="none" stroke="var(--success-dot)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="24" height="24" fill="none" stroke="var(--success-dot)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 12 14 8 4" />
               </svg>
               <div style={styles.joinedCopy}>
@@ -138,6 +142,14 @@ export function WaitingScreen() {
                   Starting {tellerName ? "sign language" : "text chat"}…
                 </span>
               </div>
+              <TouchButton
+                variant="primary"
+                size="touch"
+                onPress={handleContinue}
+                icon={<ArrowRight size={20} color="#FFFFFF" />}
+              >
+                Continue now
+              </TouchButton>
             </div>
           )}
 
@@ -319,24 +331,25 @@ const styles = {
   joinedBanner: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "12px 16px",
-    borderRadius: 12,
-    background: "var(--lavender)",
-    border: "1px solid var(--success-bg)",
+    gap: 12,
+    padding: "14px 18px",
+    borderRadius: 14,
+    background: "var(--success-bg)",
+    border: "2px solid var(--success-bg)",
     width: "100%",
+    animation: "sn-pulse 2s ease-in-out infinite",
   } as React.CSSProperties,
   joinedCopy: { flex: 1, minWidth: 0, textAlign: "left" } as React.CSSProperties,
   joinedTitle: {
     display: "block",
     fontSize: 15,
     fontWeight: 800,
-    color: "var(--purple-800)",
+    color: "var(--success-text)",
     marginBottom: 2,
   } as React.CSSProperties,
   joinedBody: {
     fontSize: 14,
-    color: "var(--ink)",
+    color: "var(--success-text)",
     margin: 0,
   } as React.CSSProperties,
   infoCards: {
@@ -395,6 +408,7 @@ const styles = {
   statusStripJoined: {
     background: "var(--success-bg)",
     borderColor: "var(--success-bg)",
+    color: "var(--success-text)",
   } as React.CSSProperties,
   statusSpinner: {
     width: 16,

@@ -1,26 +1,27 @@
 // useHandLandmarker.ts — browser MediaPipe Hand Landmarker (PWA port).
 // Replaces the native expo-hand-landmarker module with @mediapipe/tasks-vision
 // running in VIDEO mode on an HTMLVideoElement. Results are converted through
-// the existing mediapipe-adapter.ts (anatomical left/right slots) and pushed
-// into the useHandRecorder ring buffer — exactly the same pipeline the native
-// module fed, so preprocess.ts and the recogniser are unchanged.
+// the existing mediapipe-adapter.ts contract (anatomical left/right slots) and
+// pushed into the caller's onFrame callback.
 //
 // Responsibilities:
 //   1. Load the MediaPipe vision wasm files from /wasm-vision/.
 //   2. Create a HandLandmarker in VIDEO mode with the bundled hand_landmarker.task.
+//      Tries the GPU delegate first, falls back to CPU.
 //   3. On each camera frame, run detectForVideo, convert via the adapter, and
-//      push the FrameLandmarks into onFrame (the recorder's pushFrame).
+//      push the FrameLandmarks plus per-hand handedness info into onFrame.
 //   4. Destroy the detector when the session ends.
 //
 // FilesetResolver + HandLandmarker are created once and reused.
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FilesetResolver,
   HandLandmarker,
   type HandLandmarkerResult,
 } from "@mediapipe/tasks-vision";
-import type { HandLandmarksPerFrame } from "./useHandRecorder";
+import type { HandLandmarksPerFrame, HandInfo } from "../../../../shared/types/session";
+import { SIGN_CONFIG } from "../config";
 
 export interface UseHandLandmarkerOptions {
   landmarkerOptions?: {
@@ -29,7 +30,7 @@ export interface UseHandLandmarkerOptions {
     minHandPresenceConfidence?: number;
     minTrackingConfidence?: number;
   };
-  onFrame: (frame: HandLandmarksPerFrame) => void;
+  onFrame: (frame: HandLandmarksPerFrame, handInfos: HandInfo[]) => void;
 }
 
 export interface UseHandLandmarkerReturn {
@@ -37,6 +38,7 @@ export interface UseHandLandmarkerReturn {
   isInitialising: boolean;
   isUnavailable: boolean;
   error: string | null;
+  delegate: "GPU" | "CPU" | null;
   initialise: () => Promise<void>;
   destroy: () => Promise<void>;
   processFrame: (videoElement: HTMLVideoElement, timestampMs: number) => void;
@@ -45,14 +47,11 @@ export interface UseHandLandmarkerReturn {
 const WASM_PATH = "/wasm-vision/";
 const MODEL_PATH = "/models/hand_landmarker.task";
 
-/** Confidence above which at least one hand is considered reliably detected. */
-const HAND_DETECTION_THRESHOLD = 0.5;
-
 /** A single hand's 21 landmarks, each { x, y, z } (dropped MediaPipe extras). */
 type AHandLandmarks = Array<{ x: number; y: number; z: number }>;
 
 /** MediaPipe handedness metadata for one detected hand. */
-type AHandednessEntry = Array<{ categoryName: string }>;
+type AHandednessEntry = Array<{ categoryName: string; score?: number }>;
 
 /** MediaPipe result payload, narrowed to the parallel-array shape we consume. */
 type ACameraHand = { handedness: AHandednessEntry[]; landmarks: AHandLandmarks[] };
@@ -65,6 +64,11 @@ export function useHandLandmarker({
   const isInitialisingRef = useRef(false);
   const errorRef = useRef<string | null>(null);
   const landmarkerRef = useRef<HandLandmarker | null>(null);
+  const delegateRef = useRef<"GPU" | "CPU" | null>(null);
+
+  const [isReady, setIsReady] = useState(false);
+  const [isInitialising, setIsInitialising] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onFrameRef = useRef(onFrame);
   useEffect(() => {
@@ -79,27 +83,31 @@ export function useHandLandmarker({
    * "Right"). We map each detected hand onto the anatomical slot — slot 0 =
    * LEFT, slot 1 = RIGHT — so the recorder / preprocess / model contract is
    * preserved exactly.
+   *
+   * NOTE: for selfie (mirrored) video the camera frame shown to the user is
+   * flipped, but MediaPipe processes the intrinsic (unflipped) frames. The
+   * anatomical slot mapping below matches the training extraction
+   * (dataset.py: left block first, then right block, keyed on MediaPipe's
+   * category_name). See the screen debug panel for per-hand label/score/slot.
    */
   function decodeFrame(result: HandLandmarkerResult): {
     frame: HandLandmarksPerFrame;
+    handInfos: HandInfo[];
     error: string | null;
     confidence: number;
   } {
     const handedness = result.handedness ?? [];
     const landmarks = result.landmarks ?? [];
 
-    // Sanity guard: one handedness entry per landmark array.
     if (handedness.length !== landmarks.length) {
       return {
-        frame: { handLandmarks: [] },
+        frame: { handLandmarks: [null, null] },
+        handInfos: [],
         error: `HandLandmarker returned ${landmarks.length} landmark array(s) but ${handedness.length} handedness entry/entries.`,
         confidence: 0,
       };
     }
 
-    // Narrow to the parallel-array shape (each entry is a plain { x, y, z }[]
-    // or Category[]). We avoid importing the full MediaPipe types here so the
-    // compiler keeps the narrow shape without widening.
     const narrowResult: ACameraHand = {
       handedness: handedness as AHandednessEntry[],
       landmarks: landmarks as AHandLandmarks[],
@@ -108,35 +116,29 @@ export function useHandLandmarker({
     let leftSeen = false;
     let rightSeen = false;
     const slots: Array<{ landmarks: AHandLandmarks } | null> = [null, null];
+    const handInfos: HandInfo[] = [];
 
     for (let i = 0; i < narrowResult.landmarks.length; i++) {
       const hand = narrowResult.handedness[i];
       const cat = hand && hand.length > 0 ? hand[0] : null;
-      const label = cat?.categoryName ?? "";
-
+      const label = (cat?.categoryName ?? "") as "Left" | "Right" | null;
+      const score = typeof cat?.score === "number" ? cat.score : 0;
       const coords = narrowResult.landmarks[i] ?? [];
 
+      let slot: 0 | 1 | null = null;
       if (label === "Left") {
-        if (leftSeen) {
-          return {
-            frame: { handLandmarks: [] },
-            error: `Duplicate left hand handedness detected at index ${i}.`,
-            confidence: 0,
-          };
-        }
+        if (leftSeen) continue; // ignore duplicate handedness detections
         leftSeen = true;
+        slot = 0;
         slots[0] = { landmarks: coords };
       } else if (label === "Right") {
-        if (rightSeen) {
-          return {
-            frame: { handLandmarks: [] },
-            error: `Duplicate right hand handedness detected at index ${i}.`,
-            confidence: 0,
-          };
-        }
+        if (rightSeen) continue; // ignore duplicate handedness detections
         rightSeen = true;
+        slot = 1;
         slots[1] = { landmarks: coords };
       }
+
+      handInfos.push({ slot, label, score, landmarks: coords.length ? coords : null });
     }
 
     const frame: HandLandmarksPerFrame = {
@@ -147,7 +149,7 @@ export function useHandLandmarker({
     if (leftSeen) confidence += 0.5;
     if (rightSeen) confidence += 0.5;
 
-    return { frame, error: null, confidence };
+    return { frame, handInfos, error: null, confidence };
   }
 
   const handleResult = useCallback((result: HandLandmarkerResult): void => {
@@ -155,10 +157,8 @@ export function useHandLandmarker({
       const decoded = decodeFrame(result);
 
       // Push the decoded per-hand landmarks; a hand missing from a frame is a
-      // zero-fill slot for the recorder / preprocess contract.
-      const recorderFrame: HandLandmarksPerFrame = decoded.frame;
-
-      onFrameRef.current(recorderFrame);
+      // zero-fill slot for the preprocess contract.
+      onFrameRef.current(decoded.frame, decoded.handInfos);
 
       if (decoded.error) {
         console.warn(
@@ -173,39 +173,63 @@ export function useHandLandmarker({
     }
   }, []);
 
+  const createLandmarker = async (delegate: "GPU" | "CPU"): Promise<HandLandmarker> => {
+    const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
+    return HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: MODEL_PATH,
+        delegate,
+      },
+      runningMode: "VIDEO",
+      numHands: landmarkerOptions?.numHands ?? SIGN_CONFIG.NUM_HANDS,
+      minHandDetectionConfidence:
+        landmarkerOptions?.minHandDetectionConfidence ?? SIGN_CONFIG.MIN_HAND_DETECTION_CONFIDENCE,
+      minHandPresenceConfidence:
+        landmarkerOptions?.minHandPresenceConfidence ?? SIGN_CONFIG.MIN_HAND_PRESENCE_CONFIDENCE,
+      minTrackingConfidence:
+        landmarkerOptions?.minTrackingConfidence ?? SIGN_CONFIG.MIN_TRACKING_CONFIDENCE,
+    });
+  };
+
   const initialise = useCallback(async () => {
     if (isReadyRef.current || isInitialisingRef.current) return;
     isInitialisingRef.current = true;
     errorRef.current = null;
+    setError(null);
+    setIsInitialising(true);
 
     try {
-      const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
+      try {
+        const landmarker = await createLandmarker("GPU");
+        landmarkerRef.current = landmarker;
+        delegateRef.current = "GPU";
+        isReadyRef.current = true;
+        setIsReady(true);
+        return;
+      } catch (gpuErr) {
+        console.warn("[useHandLandmarker] GPU delegate unavailable, falling back to CPU:", (gpuErr as Error).message);
+      }
 
-      const landmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: MODEL_PATH,
-          delegate: "CPU",
-        },
-        runningMode: "VIDEO",
-        numHands: landmarkerOptions?.numHands ?? 2,
-        minHandDetectionConfidence: landmarkerOptions?.minHandDetectionConfidence ?? HAND_DETECTION_THRESHOLD,
-        minHandPresenceConfidence: landmarkerOptions?.minHandPresenceConfidence ?? HAND_DETECTION_THRESHOLD,
-        minTrackingConfidence: landmarkerOptions?.minTrackingConfidence ?? HAND_DETECTION_THRESHOLD,
-      });
-
+      const landmarker = await createLandmarker("CPU");
       landmarkerRef.current = landmarker;
+      delegateRef.current = "CPU";
       isReadyRef.current = true;
+      setIsReady(true);
     } catch (err) {
       const msg = (err as Error).message ?? "Unknown error";
       errorRef.current = `HandLandmarker init failed: ${msg}`;
+      setError(errorRef.current);
       console.warn("[useHandLandmarker]", errorRef.current);
     } finally {
       isInitialisingRef.current = false;
+      setIsInitialising(false);
     }
   }, [landmarkerOptions]);
 
   const destroy = useCallback(async () => {
     isReadyRef.current = false;
+    delegateRef.current = null;
+    setIsReady(false);
     if (landmarkerRef.current) {
       try {
         landmarkerRef.current.close();
@@ -237,15 +261,12 @@ export function useHandLandmarker({
   );
 
   return {
-    get isReady() {
-      return isReadyRef.current;
-    },
-    get isInitialising() {
-      return isInitialisingRef.current;
-    },
+    isReady,
+    isInitialising,
     isUnavailable: false,
-    get error() {
-      return errorRef.current;
+    error,
+    get delegate() {
+      return delegateRef.current;
     },
     processFrame,
     initialise,

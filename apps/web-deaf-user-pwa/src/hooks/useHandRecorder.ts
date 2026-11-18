@@ -8,7 +8,8 @@
 // React/JS with no native imports, so it unit-tests alongside preprocess.ts.
 
 import { useCallback, useRef, useState } from "react";
-import { landmarksToFloat32, type FrameLandmarks, CLIP_LEN } from "../model/preprocess";
+import { landmarksToFloat32, CLIP_LEN } from "../model/preprocess";
+import type { HandLandmarksPerFrame } from "../../../../shared/types/session";
 
 /** Delay in ms between frame callbacks while recording. */
 export const FRAME_INTERVAL_MS = 60; // ~16fps at 1000ms; tune to camera fps
@@ -18,7 +19,7 @@ export const FRAME_INTERVAL_MS = 60; // ~16fps at 1000ms; tune to camera fps
  */
 export interface Recording {
   /** Raw per-frame landmarks (for tests / inspection). */
-  frames: FrameLandmarks[];
+  frames: HandLandmarksPerFrame[];
   /** The preprocessed Float32Array[60][126] ready for the model. */
   sequence: Float32Array;
   /** True once the target clip length has been reached. */
@@ -26,22 +27,6 @@ export interface Recording {
 }
 
 /**
- * Mutable hand-landmark frame the native MediaPipe Hand Landmarker plugin
- * writes into. The app receives this from the camera frame processor
- * (onFrameReceived / the native frame-handler callback) and passes it to the
- * recorder. Type mirrors the hand landmarker plugin output.
- */
-export interface HandLandmarksPerFrame {
-  handLandmarks?: {
-    landmarks: Array<{ x: number; y: number; z: number }>;
-  }[];
-}
-
-/**
- * Recorder hook. Keeps a ring buffer of the last CLIP_LEN frames and stops
- * recording when the caller signals (the existing stop action in the "Perform
- * sign" step).
- *
  * @param onFrame - called each time the native camera pipeline supplies a
  *                  new HandLandmarksPerFrame. Important: the native plugin
  *                  usually only delivers frames where a hand was detected;
@@ -100,7 +85,7 @@ export function useHandRecorder(
     const frames = bufferRef.current.slice(0, CLIP_LEN);
     const padded = [...frames];
     while (padded.length < CLIP_LEN) {
-      padded.push({ handLandmarks: [] });
+      padded.push({ handLandmarks: [null, null] });
     }
 
     const sequence = landmarksToFloat32(padded);

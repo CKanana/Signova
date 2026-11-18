@@ -178,12 +178,20 @@ export function sendStaffMessageAsync(
     return Promise.reject(new Error("Not connected to the service."));
   }
   return new Promise<void>((resolve, reject) => {
-    const ackPayload = { sessionId, text, method, timestamp: new Date().toISOString() };
+    const ackPayload = { sessionId, text, method, timestamp: new Date().toISOString() } as Record<string, unknown>;
     const send: PendingSend = {
       id: `send-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       ackPayload,
-      resolve,
-      reject,
+      resolve: (payload: unknown) => {
+        cleanup();
+        pendingSendStore.drop(id);
+        resolve(payload as never);
+      },
+      reject: (error: Error) => {
+        cleanup();
+        pendingSendStore.drop(id);
+        reject(error);
+      },
     };
     const id = pendingSendStore.add(send);
 
@@ -197,19 +205,18 @@ export function sendStaffMessageAsync(
     // Also resolve via message:new in the session room (the staff socket's
     // own broadcast). Used as a fallback and as the confirmation for the
     // legacy fire-and-forget path.
-    const onNewMessage = (m: WireMessage) => {
+    socket.on(S2C_STAFF.MESSAGE_NEW, (m: WireMessage) => {
       if (m.sessionId === sessionId && m.sender === "STAFF" && m.text === text && m.method === method) {
+        const resolved = resolve as (value: unknown) => void;
         cleanup();
         pendingSendStore.drop(id);
-        resolve(m);
+        resolved(m);
       }
-    };
-    socket.on(S2C_STAFF.MESSAGE_NEW, onNewMessage);
+    });
 
     // Clean up callbacks once resolved.
     const cleanup = () => {
-      socket.off(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
-      socket.off(S2C_STAFF.MESSAGE_NEW, onNewMessage);
+      socket?.off(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
     };
 
     try {

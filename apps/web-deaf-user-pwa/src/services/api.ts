@@ -103,6 +103,8 @@ export const api = {
       method: "sign" | "text" | "speech";
       confidence?: number;
       isConfirmed?: boolean;
+      /** Optional message metadata; extra fields do not break the Teller contract. */
+      inputMethod?: "sign" | "text";
     },
   ) =>
     request<{ message: MessageRecord }>(`/api/sessions/${sessionId}/messages`, {
@@ -122,4 +124,10 @@ export const api = {
   /** Recovery: fetch the Deaf user's latest CONNECTING/ACTIVE session. */
   getCurrentSession: () =>
     request<{ session: SessionRecord | null }>("/api/sessions/current"),
+
+  /** Phase 2: request the animation again for one message. */
+  retryAnimation: (sessionId: string, messageId: string) =>
+    request<{ message: MessageRecord }>(`/api/sessions/${sessionId}/messages/${messageId}/retry`, {
+      method: "POST",
+    }),
 };

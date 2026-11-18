@@ -1,7 +1,7 @@
 import React from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
-import { User, Send, ArrowLeft } from "lucide-react";
+import { ArrowLeft, Send } from "lucide-react";
 
 export function StaffResponseScreen() {
   const { messages, goToStep } = useSession();
@@ -10,37 +10,108 @@ export function StaffResponseScreen() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.content}>
-        <div style={styles.header}>
-          <button aria-label="Back" onClick={() => goToStep("conversation")} style={styles.backButton}>
-            <ArrowLeft size={20} color="var(--signova-text)" />
-          </button>
-          <div style={styles.staffBadge}>
-            <User size={20} color="var(--signova-primary)" />
-            <span style={styles.staffLabel}>Staff response</span>
-          </div>
+      <header style={styles.header}>
+        <button
+          type="button"
+          aria-label="Back"
+          onClick={() => goToStep("conversation")}
+          style={styles.backButton}
+        >
+          <ArrowLeft size={20} color="#FFFFFF" />
+        </button>
+        <div style={styles.staffBadge}>
+          <span style={styles.staffBadge}>Staff response</span>
         </div>
+        <div style={styles.headerSpacer} />
+      </header>
+      <main style={styles.content}>
         <div style={styles.messageCard}>
           <span style={styles.messageText}>{text}</span>
         </div>
         <div style={styles.actions}>
-          <TouchButton variant="primary" size="touch" fullWidth onPress={() => goToStep("conversation")} icon={<Send size={18} color="#FFFFFF" />}>
+          <TouchButton
+            variant="primary"
+            size="touch"
+            fullWidth
+            onPress={() => goToStep("live")}
+            icon={<Send size={18} color="#FFFFFF" />}
+          >
             Reply
           </TouchButton>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
 const styles = {
-  container: { minHeight: "100vh", width: "100%", background: "var(--signova-background)", fontFamily: "var(--signova-font-family)", color: "var(--signova-text)" } as React.CSSProperties,
-  content: { padding: 20, maxWidth: 560, margin: "0 auto", boxSizing: "border-box", minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center" } as React.CSSProperties,
-  header: { display: "flex", alignItems: "center", gap: 10, marginBottom: 8 } as React.CSSProperties,
-  backButton: { background: "transparent", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: "inherit" } as React.CSSProperties,
-  staffBadge: { display: "flex", alignItems: "center", gap: 6 } as React.CSSProperties,
-  staffLabel: { fontSize: 16, fontWeight: 700, color: "var(--signova-text)" } as React.CSSProperties,
-  messageCard: { padding: 20, borderRadius: 20, background: "var(--signova-surface)", border: "1px solid var(--signova-border)", marginBottom: 18 } as React.CSSProperties,
-  messageText: { fontSize: 20, color: "var(--signova-text)", lineHeight: 1.6, margin: 0 } as React.CSSProperties,
-  actions: { width: "100%" } as React.CSSProperties,
+  container: {
+    minHeight: "100dvh",
+    width: "100%",
+    background: "var(--cornsilk)",
+    fontFamily: "var(--font-family)",
+    color: "var(--ink)",
+    display: "flex",
+    flexDirection: "column",
+    overflowX: "hidden",
+  } as React.CSSProperties,
+  header: {
+    background: "var(--purple-600)",
+    color: "#FFFFFF",
+    padding: "calc(var(--space-2) + var(--safe-top)) var(--space-4)",
+    borderBottom: "1px solid var(--border-ctl)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexShrink: 0,
+  } as React.CSSProperties,
+  backButton: {
+    background: "rgba(255,255,255,0.15)",
+    border: "2px solid rgba(255,255,255,0.35)",
+    borderRadius: "var(--radius-control)",
+    width: 44,
+    height: 44,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    color: "#FFFFFF",
+    flexShrink: 0,
+  } as React.CSSProperties,
+  staffBadge: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#FFFFFF",
+  } as React.CSSProperties,
+  headerSpacer: { flex: 1 } as React.CSSProperties,
+  content: {
+    flex: 1,
+    minHeight: 0,
+    padding: "calc(var(--space-3) + var(--safe-top)) var(--space-4) calc(var(--space-6) + var(--safe-bottom))",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    textAlign: "center",
+  } as React.CSSProperties,
+  messageCard: {
+    padding: 20,
+    borderRadius: "var(--radius-card)",
+    background: "var(--cream-card)",
+    border: "1px solid var(--border-soft)",
+    marginBottom: 18,
+    boxShadow: "var(--shadow)",
+  } as React.CSSProperties,
+  messageText: {
+    fontSize: 20,
+    color: "var(--ink)",
+    lineHeight: 1.6,
+    margin: 0,
+  } as React.CSSProperties,
+  actions: {
+    width: "100%",
+    maxWidth: 420,
+  } as React.CSSProperties,
 };
