@@ -1,9 +1,10 @@
 # Signova Administrator dashboard — Netlify site configuration.
 #
 # Netlify site settings:
-#   Base directory:    apps/web-admin-portal
-#   Build command:     npm ci --workspaces=false --include=dev && npm run build
-#   Publish directory: dist
+#   Base directory:    (blank) repository root
+#   Build command:     npm ci --workspace @signova/web-admin-portal --include=dev
+#                      && npm run build --workspace @signova/web-admin-portal
+#   Publish directory: apps/web-admin-portal/dist
 #
 # Required build environment variables (Site configuration → Environment):
 #   NODE_VERSION            22.12.0
@@ -12,11 +13,12 @@
 #   VITE_GOOGLE_CLIENT_ID   optional; enables Google sign-in
 #
 # This site is independent of the PWA and teller sites. It must never ship
-# development helpers such as auth_bridge.html with live tokens.
+# development helpers such as auth_bridge.html with live tokens. Install and
+# build are scoped to this workspace so other workspaces are never built.
 
 [build]
-  command = "npm ci --workspaces=false --include=dev && npm run build"
-  publish = "dist"
+  command = "npm ci --workspace @signova/web-admin-portal --include=dev && npm run build --workspace @signova/web-admin-portal"
+  publish = "apps/web-admin-portal/dist"
 
 [build.environment]
   NODE_VERSION = "22.12.0"
