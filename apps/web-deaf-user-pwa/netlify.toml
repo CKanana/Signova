@@ -1,9 +1,10 @@
 # Signova Deaf-user PWA — Netlify site configuration.
 #
 # Netlify site settings:
-#   Base directory:    apps/web-deaf-user-pwa
-#   Build command:     npm ci --workspaces=false --include=dev && npm run build
-#   Publish directory: dist
+#   Base directory:    (blank) repository root
+#   Build command:     npm ci --workspace @signova/web-deaf-user-pwa --include=dev
+#                      && npm run build --workspace @signova/web-deaf-user-pwa
+#   Publish directory: apps/web-deaf-user-pwa/dist
 #
 # Required build environment variables (Site configuration → Environment):
 #   NODE_VERSION      22.12.0
@@ -11,11 +12,12 @@
 #   VITE_USE_MODEL    true
 #
 # This app is installed standalone; it is not merged with the teller or
-# administrator sites.
+# administrator sites. The install and build are scoped to this workspace so
+# the root "build all workspaces" script and the other apps are never run.
 
 [build]
-  command = "npm ci --workspaces=false --include=dev && npm run build"
-  publish = "dist"
+  command = "npm ci --workspace @signova/web-deaf-user-pwa --include=dev && npm run build --workspace @signova/web-deaf-user-pwa"
+  publish = "apps/web-deaf-user-pwa/dist"
 
 [build.environment]
   NODE_VERSION = "22.12.0"
