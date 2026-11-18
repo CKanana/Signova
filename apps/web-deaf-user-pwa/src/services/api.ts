@@ -7,6 +7,7 @@ import type {
   TranslateResponse,
   SessionRecord,
 } from "../../../../shared/types/mobile";
+import type { SignPoseResponse } from "../../../../shared/types/signPose";
 
 /**
  * Typed REST client for the Signova backend.
@@ -94,6 +95,11 @@ export const api = {
 
   getMessages: (sessionId: string) =>
     request<{ messages: MessageRecord[] }>(`/api/sessions/${sessionId}/messages`),
+
+  getMessagePose: (sessionId: string, messageId: string) =>
+    request<SignPoseResponse>(
+      `/api/sessions/${sessionId}/messages/${messageId}/pose`,
+    ),
 
   sendMessage: (
     sessionId: string,

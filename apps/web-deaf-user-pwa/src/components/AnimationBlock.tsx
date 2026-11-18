@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause, RefreshCcw, Expand, Minimize2, AlertCircle, Loader2 } from "lucide-react";
 import { API_BASE_URL } from "../config";
+import { getAuthToken } from "../services/api";
 
 export type AnimationStatus = "pending" | "ready" | "failed" | "skipped";
 
 interface AnimationBlockProps {
   messageId: string;
   text: string;
+  captionText?: string;
   animation: {
     status: AnimationStatus;
     url: string | null;
@@ -29,6 +31,7 @@ function styleVideo(url: string | null) {
 export function AnimationBlock({
   messageId,
   text,
+  captionText,
   animation,
   dataSaver,
   reduceMotion,
@@ -39,35 +42,84 @@ export function AnimationBlock({
   const [playing, setPlaying] = useState(false);
   const [shouldLoad, setShouldLoad] = useState(false);
   const [errorShown, setErrorShown] = useState(false);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const hasPlayedRef = useRef(false);
   const playbackRateRef = useRef(1);
 
   const status = animation?.status ?? null;
   const url = animation?.url ?? null;
   const fullUrl = styleVideo(url);
+  const caption = captionText ?? "ASL animation (approximate)";
 
   const isReady = status === "ready" && !!fullUrl;
-  const isFailed = status === "failed";
+  const isFailed = status === "failed" || fetchFailed || videoFailed;
   const isPending = status === "pending" || status === null;
 
-  // Load the video whenever an animation is ready (data-saver only blocks autoplay,
-  // not loading; the user taps "Play animation" to start).
   useEffect(() => {
     if (isReady) setShouldLoad(true);
   }, [isReady]);
 
-  // Auto-play once when loaded (unless reduced motion or data-saver).
   useEffect(() => {
-    if (isReady && shouldLoad && !reduceMotion && !dataSaver && videoRef.current && !hasPlayedRef.current) {
+    setVideoFailed(false);
+    setErrorShown(false);
+    hasPlayedRef.current = false;
+  }, [fullUrl]);
+
+  useEffect(() => {
+    if (!isReady || !shouldLoad || !fullUrl) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    setFetchFailed(false);
+    setObjectUrl(null);
+
+    const token = getAuthToken();
+    fetch(fullUrl, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Animation request failed (${response.status})`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        setObjectUrl(URL.createObjectURL(blob));
+      })
+      .catch((err: Error) => {
+        if (cancelled || err.name === "AbortError") return;
+        setFetchFailed(true);
+        setErrorShown(true);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [isReady, shouldLoad, fullUrl, reloadKey]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
+
+  useEffect(() => {
+    if (isReady && objectUrl && !reduceMotion && !dataSaver && videoRef.current && !hasPlayedRef.current) {
       const video = videoRef.current;
       video.muted = true;
       video.playsInline = true;
       void video.play().then(() => {
         hasPlayedRef.current = true;
         setPlaying(true);
-      }).catch(() => { /* autoplay blocked; user can press play */ });
+      }).catch(() => {});
     }
-  }, [isReady, shouldLoad, reduceMotion, dataSaver]);
+  }, [isReady, objectUrl, reduceMotion, dataSaver]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -111,8 +163,13 @@ export function AnimationBlock({
 
   const handleRetry = useCallback(() => {
     setErrorShown(false);
+    if (fetchFailed) {
+      setFetchFailed(false);
+      setReloadKey((value) => value + 1);
+      return;
+    }
     onRetry?.(messageId);
-  }, [messageId, onRetry]);
+  }, [messageId, onRetry, fetchFailed]);
 
   const handleEnlarge = useCallback(() => {
     setEnlarged(true);
@@ -133,11 +190,11 @@ export function AnimationBlock({
             <p style={styles.failedTitle}>Animation unavailable.</p>
             <p style={styles.failedSub}>Please read the message above.</p>
           </div>
-          {onRetry ? (
+          {onRetry && !videoFailed ? (
             <TouchButtonPress onPress={handleRetry} label="Retry" style={styles.retryButton} />
           ) : null}
         </div>
-        <p style={styles.caption}>ASL animation (approximate)</p>
+        <p style={styles.caption}>{caption}</p>
       </div>
     );
   }
@@ -150,18 +207,20 @@ export function AnimationBlock({
     <>
       <video
         ref={videoRef}
-        src={shouldLoad && isReady ? fullUrl : undefined}
-        autoPlay={!reduceMotion && !dataSaver && isReady && !enlarged ? false : false}
+        src={objectUrl ?? undefined}
+        autoPlay={false}
         playsInline
         muted
         onLoadedData={handleLoaded}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
-        onError={() => setErrorShown(true)}
+        onError={() => {
+          setErrorShown(true);
+          setVideoFailed(true);
+        }}
         style={styles.video}
         aria-label={`Signing animation for: ${text}`}
-        webkit-playsinline
         disablePictureInPicture
       />
       <div style={styles.controls}>
@@ -210,9 +269,23 @@ export function AnimationBlock({
           </>
         )}
       </div>
-      <p style={styles.caption}>ASL animation (approximate)</p>
+      <p style={styles.caption}>{caption}</p>
     </>
   );
+
+  if (isReady && shouldLoad && !objectUrl && !fetchFailed) {
+    return (
+      <div style={styles.pendingContainer} role="status" aria-live="polite">
+        <div style={styles.skeleton}>
+          <div style={styles.skeletonLine} />
+          <div style={styles.skeletonLineShort} />
+          <div style={styles.spinner}>{SPINNER}</div>
+          <p style={styles.pendingText}>Loading the signing animation…</p>
+        </div>
+        <p style={styles.caption}>{caption}</p>
+      </div>
+    );
+  }
 
   if (enlarged) {
     return (
@@ -242,7 +315,7 @@ export function AnimationBlock({
           <div style={styles.spinner}>{SPINNER}</div>
           <p style={styles.pendingText}>Preparing the signing animation…</p>
         </div>
-        <p style={styles.caption}>ASL animation (approximate)</p>
+        <p style={styles.caption}>{caption}</p>
       </div>
     );
   }
@@ -326,7 +399,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   speedButtonActive: { background: "var(--signova-primary)", color: "#FFFFFF", borderColor: "var(--signova-primary)" },
   caption: {
-    margin: "6px 0 0", fontSize: 12, color: "var(--purple-600)", fontWeight: 700, textAlign: "center",
+    margin: "6px 0 0", padding: "8px 10px", fontSize: 12, lineHeight: 1.45,
+    color: "var(--purple-600)", fontWeight: 700, textAlign: "center",
+    background: "#F0E5FA", border: "1px solid rgba(96, 43, 145, 0.16)", borderRadius: 10,
   },
   enlargeBackdrop: {
     position: "fixed", inset: 0, zIndex: 200, background: "rgba(30,27,46,0.55)",

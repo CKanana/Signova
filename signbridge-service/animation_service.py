@@ -24,13 +24,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
 import time
 import logging
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
+
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -234,7 +239,8 @@ def generate_animations(text: str, output_dir: Optional[str] = None) -> dict[str
     if size <= 0:
         raise RuntimeError(f"Generated file is empty: {filepath}")
 
-    metadata = get_video_metadata(filepath)
+    metadata = transcode_for_browser(filepath)
+    size = os.path.getsize(filepath)
 
     return {
         "status": "ok",
@@ -244,6 +250,116 @@ def generate_animations(text: str, output_dir: Optional[str] = None) -> dict[str
         "size_bytes": size,
         "metadata": metadata,
     }
+
+
+# ---------------------------------------------------------------------------
+# Structured pose sequence (drives Signova's own SVG avatar)
+# ---------------------------------------------------------------------------
+POSE_FPS = 30
+
+
+def generate_pose_sequence(text: str) -> dict[str, Any]:
+    """Return the real SignBridge pose sequence for English text.
+
+    This reuses the untouched SignBridge gloss engine, pose loader,
+    interpolation and transition logic. It does not render video and does not
+    use the SignBridge avatar: the JSON is consumed by Signova's own SVG
+    renderer.
+    """
+    stripped = validate_text(text)
+    original_cwd = os.getcwd()
+
+    try:
+        os.chdir(SIGNBRIDGE_ROOT)
+        main_module = _import_signbridge_main()
+        pose_dir = os.path.join(SIGNBRIDGE_ROOT, "Pose")
+
+        buffer = StringIO()
+        with redirect_stdout(buffer):
+            gloss_sequence = main_module.gen_pose(stripped)
+
+        if not gloss_sequence:
+            raise ValueError("No valid gloss generated from the provided text.")
+
+        director = main_module.AnimationDirector(
+            poses_dir=pose_dir,
+            output_file="",
+        )
+        loader = director.loader
+
+        segments: list[tuple[np.ndarray, str]] = []
+        for name in gloss_sequence:
+            path = os.path.join(pose_dir, f"{name}.json")
+            matrix, _joints = loader.load_sequence(path)
+            if matrix is None or len(matrix) == 0:
+                continue
+            segments.append((matrix, name))
+
+        if not segments:
+            raise ValueError("No usable pose data was found for this text.")
+
+        sequence_frames: list[tuple[np.ndarray, str]] = []
+        last_frame: Optional[np.ndarray] = None
+        for matrix, name in segments:
+            if last_frame is not None:
+                transition = director._create_transition(
+                    last_frame,
+                    matrix[0],
+                    director.transition_frames,
+                )
+                for frame in transition:
+                    sequence_frames.append((frame, "..."))
+            for frame in matrix:
+                sequence_frames.append((frame, name))
+            last_frame = matrix[-1]
+
+        joints = list(loader.target_joints)
+        joint_count = len(joints)
+
+        frames: list[dict[str, Any]] = []
+        for frame, pose_name in sequence_frames:
+            packed: list[Optional[float]] = []
+            for index in range(joint_count):
+                x = float(frame[index][0])
+                y = float(frame[index][1])
+                if np.isnan(x) or np.isnan(y):
+                    packed.extend([None, None])
+                else:
+                    packed.extend([round(x, 5), round(y, 5)])
+            frames.append({"pose": pose_name, "p": packed})
+
+        if not frames:
+            raise ValueError("The pose sequence is empty.")
+
+        dropped: list[str] = []
+        for line in buffer.getvalue().splitlines():
+            match = re.search(r"Pose not available for:\s*(\S+)", line)
+            if match:
+                dropped.append(match.group(1))
+                continue
+            match = re.search(r"Letter\s+(\S+)\s+not found", line)
+            if match:
+                dropped.append(match.group(1))
+
+        unique_dropped = list(dict.fromkeys(dropped))
+        duration_ms = round((len(frames) / POSE_FPS) * 1000)
+
+        return {
+            "status": "ok",
+            "text": stripped,
+            "glosses": [name for _matrix, name in segments],
+            "droppedWords": unique_dropped,
+            "fps": POSE_FPS,
+            "durationMs": duration_ms,
+            "frameCount": len(frames),
+            "transitionFrames": director.transition_frames,
+            "joints": joints,
+            "frames": frames,
+            "coordinateSpace": "signbridge_normalized",
+            "source": "signbridge",
+        }
+    finally:
+        os.chdir(original_cwd)
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +433,56 @@ def get_video_metadata(filepath: str) -> dict[str, Any]:
         "size_bytes": os.path.getsize(filepath),
         "file": os.path.basename(filepath),
     }
+
+
+BROWSER_SAFE_CODECS = {"h264", "vp8", "vp9", "av1"}
+
+
+def transcode_for_browser(filepath: str) -> dict[str, Any]:
+    """Ensure the rendered MP4 uses a codec browsers can play.
+
+    OpenCV's default MP4 writer emits MPEG-4 Part 2 ("mpeg4"), which Chrome and
+    Edge cannot decode in a <video> element. New files are remuxed/transcoded to
+    H.264 so the Deaf-user PWA can play the 2D sign animation.
+    """
+    metadata = get_video_metadata(filepath)
+    codec = str(metadata.get("codec") or "").lower()
+    if codec in BROWSER_SAFE_CODECS:
+        return metadata
+
+    temp_path = f"{filepath}.h264.mp4"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loglevel", "error",
+        "-i", filepath,
+        "-an",
+        "-c:v", "libx264",
+        "-profile:v", "baseline",
+        "-level", "3.1",
+        "-preset", "veryfast",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        temp_path,
+    ]
+
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+        if os.path.getsize(temp_path) > 0:
+            os.replace(temp_path, filepath)
+            logger.info("Transcoded animation to browser-safe H.264: %s", filepath)
+            return get_video_metadata(filepath)
+    except Exception as exc:
+        logger.warning("Could not transcode animation to H.264: %s", exc)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    return metadata
 
 
 # ---------------------------------------------------------------------------

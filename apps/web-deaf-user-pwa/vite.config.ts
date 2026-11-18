@@ -12,6 +12,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // allow large .wasm and .tflite assets
       },
       manifest: {
+        id: "/",
         name: "Signova",
         short_name: "Signova",
         description: "ASL to text translation for Deaf and hard-of-hearing service users.",
@@ -54,7 +55,12 @@ export default defineConfig({
     }),
   ],
   server: {
+    host: true,
+    // VS Code / Dev Tunnels serves the forwarded site under *.devtunnels.ms.
+    // Vite rejects unknown Host headers by default (DNS-rebinding guard).
+    allowedHosts: [".devtunnels.ms"],
     port: 5175,
+    strictPort: true,
     proxy: {
       "/api": {
         target: "http://localhost:4000",

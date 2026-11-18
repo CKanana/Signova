@@ -12,6 +12,11 @@ import { paramId } from "../utils/params.js";
 import { getIO } from "../realtime/gateway.js";
 import { sessionRoom, S2C_STAFF, S2C_MOBILE, NAMESPACE, orgTellersRoom } from "../realtime/events.js";
 import { Message } from "../models/message.js";
+import { getSessionById } from "../services/sessionService.js";
+import {
+  getMessagePose,
+  PoseServiceError,
+} from "../services/poseService.js";
 import fs from "node:fs";
 import type { IMessage } from "../models/message.js";
 import type { IAnimation } from "../models/message.js";
@@ -54,6 +59,54 @@ function serializeMessage(m: IMessage) {
 export const listMessagesHandler = async (req: Request, res: Response): Promise<void> => {
   const messages = (await listMessages(req.auth!.orgId, paramId(req))) as unknown as IMessage[];
   res.json({ messages: messages.map((m) => ({ ...m.toJSON(), animation: serializeAnimation(m) })) });
+};
+
+export const getMessagePoseHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const orgId = req.auth!.orgId;
+  const sessionId = paramId(req);
+  const messageId = paramId(req, "messageId");
+
+  const session = await getSessionById(orgId, sessionId).catch(() => null);
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  if (
+    req.auth!.role === "DEAF_USER" &&
+    session.deafUser.toString() !== String(req.auth!.sub)
+  ) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const message = (await (Message as any).findOne({
+    _id: messageId,
+    session: sessionId,
+  })) as IMessage | null;
+
+  if (!message) {
+    res.status(404).json({ error: "Message not found" });
+    return;
+  }
+  if (message.sender !== "STAFF") {
+    res.status(400).json({ error: "Pose is only available for staff messages" });
+    return;
+  }
+
+  try {
+    const pose = await getMessagePose(messageId, message.text);
+    res.json({ pose });
+  } catch (err) {
+    if (err instanceof PoseServiceError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: "Could not prepare the 2D sign" });
+  }
 };
 
 export const sendMessageHandler = [

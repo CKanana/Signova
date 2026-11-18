@@ -1,10 +1,17 @@
 import React from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
+import { SignovaAvatarPlayer } from "../components/avatar/SignovaAvatarPlayer";
 import { ArrowLeft, Send } from "lucide-react";
 
 export function StaffResponseScreen() {
-  const { messages, goToStep } = useSession();
+  const {
+    messages,
+    goToStep,
+    sessionId,
+    retryAnimation,
+    accessibility,
+  } = useSession();
   const lastStaff = [...messages].reverse().find((m) => m.sender === "staff");
   const text = lastStaff?.text ?? "No response yet.";
 
@@ -28,6 +35,18 @@ export function StaffResponseScreen() {
         <div style={styles.messageCard}>
           <span style={styles.messageText}>{text}</span>
         </div>
+        {lastStaff ? (
+          <div style={styles.avatarWrap}>
+            <SignovaAvatarPlayer
+              message={lastStaff}
+              dataSaver={accessibility?.dataSaver ?? false}
+              reduceMotion={accessibility?.reduceMotion ?? false}
+              onRetry={(messageId) =>
+                void retryAnimation(sessionId ?? "", messageId)
+              }
+            />
+          </div>
+        ) : null}
         <div style={styles.actions}>
           <TouchButton
             variant="primary"
@@ -95,6 +114,7 @@ const styles = {
     justifyContent: "center",
     alignItems: "center",
     textAlign: "center",
+    overflowY: "auto",
   } as React.CSSProperties,
   messageCard: {
     padding: 20,
@@ -109,6 +129,11 @@ const styles = {
     color: "var(--ink)",
     lineHeight: 1.6,
     margin: 0,
+  } as React.CSSProperties,
+  avatarWrap: {
+    width: "100%",
+    maxWidth: 520,
+    marginBottom: 18,
   } as React.CSSProperties,
   actions: {
     width: "100%",

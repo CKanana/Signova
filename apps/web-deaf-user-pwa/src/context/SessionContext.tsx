@@ -1003,7 +1003,24 @@ function mapBackendMessage(m: {
     confidence: m.confidence,
     animationUrl: m.animationUrl ?? null,
     generationStatus: m.generationStatus ?? "pending",
-    animation: m.animation ?? null,
+    animation:
+      m.animation ??
+      (m.animationUrl
+        ? {
+            status:
+              m.generationStatus === "failed"
+                ? "failed"
+                : m.generationStatus === "pending" ||
+                    m.generationStatus === "generating"
+                  ? "pending"
+                  : "ready",
+            url: m.animationUrl,
+            durationMs: null,
+            requestedAt: null,
+            readyAt: null,
+            error: null,
+          }
+        : null),
   };
 }
 

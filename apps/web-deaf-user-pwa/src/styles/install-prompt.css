@@ -1,0 +1,397 @@
+.sn-install {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: min(470px, calc(100vw - 24px));
+  padding: 11px 12px;
+  border: 1.5px solid rgba(96, 43, 145, 0.2);
+  border-radius: 16px;
+  background: #fffdf5;
+  box-shadow: 0 16px 44px rgba(27, 20, 36, 0.22);
+  font-family: var(--font-family);
+  animation: snInstallRise 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sn-install__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 12px;
+  background: #602b91;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.sn-install__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sn-install__copy strong {
+  font-size: 14px;
+  font-weight: 800;
+  color: #292433;
+  letter-spacing: 0.1px;
+}
+
+.sn-install__copy span {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6b6478;
+  line-height: 1.35;
+}
+
+.sn-install__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  min-height: 40px;
+  padding: 0 17px;
+  border-radius: 999px;
+  background: #602b91;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 800;
+  box-shadow: 0 5px 14px rgba(96, 43, 145, 0.24);
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.sn-install__cta:hover:not(:disabled) {
+  background: #4b2074;
+}
+
+.sn-install__cta:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.sn-install__cta:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+
+.sn-install__spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: snInstallSpin 0.8s linear infinite;
+}
+
+.sn-install__dismiss {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid rgba(96, 43, 145, 0.16);
+  border-radius: 50%;
+  background: #ffffff;
+  color: #6b6478;
+}
+
+.sn-install__dismiss:hover {
+  color: #602b91;
+  background: #f0e5fa;
+}
+
+.sn-install-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 2100;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: #1e7a46;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 12px 32px rgba(20, 60, 35, 0.3);
+  animation: snInstallRise 220ms ease-out;
+}
+
+.sn-install-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(20, 17, 25, 0.56);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  animation: snInstallFade 160ms ease-out;
+}
+
+.sn-install-modal__card {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100%);
+  max-height: min(88vh, 700px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 22px;
+  background: #fff9e5;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
+}
+
+.sn-install-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 15px 16px;
+  background: #602b91;
+  color: #ffffff;
+}
+
+.sn-install-modal__appIcon {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 12px;
+  background: #ffffff;
+  object-fit: cover;
+}
+
+.sn-install-modal__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+}
+
+.sn-install-modal__subtitle {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sn-install-modal__close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  margin-left: auto;
+  border: 1.5px solid rgba(255, 255, 255, 0.32);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.sn-install-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+  min-height: 0;
+  padding: 15px 16px 8px;
+  overflow-y: auto;
+}
+
+.sn-install-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(96, 43, 145, 0.13);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.sn-install-step__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  background: #f0e5fa;
+  color: #602b91;
+}
+
+.sn-install-step strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #292433;
+}
+
+.sn-install-step p {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #6b6478;
+}
+
+.sn-install-modal__note {
+  flex: none;
+  margin: 0 16px 4px;
+  padding: 9px 11px;
+  border: 1px solid rgba(96, 43, 145, 0.15);
+  border-radius: 10px;
+  background: #f0e5fa;
+  color: #5b5266;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.sn-install-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex: none;
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(96, 43, 145, 0.1);
+  background: #ffffff;
+}
+
+.sn-install-modal__primary {
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: #602b91;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@keyframes snInstallRise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes snInstallRiseMobile {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes snInstallFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes snInstallSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .sn-install {
+    left: 10px;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: auto;
+    transform: none;
+    gap: 9px;
+    padding: 10px;
+    border-radius: 15px;
+    animation-name: snInstallRiseMobile;
+  }
+
+  .sn-install__icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+  }
+
+  .sn-install__copy strong {
+    font-size: 13px;
+  }
+
+  .sn-install__copy span {
+    font-size: 10.5px;
+  }
+
+  .sn-install__cta {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .sn-install__dismiss {
+    position: absolute;
+    top: -8px;
+    right: -4px;
+    width: 26px;
+    height: 26px;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(20, 17, 25, 0.14);
+  }
+
+  .sn-install-modal {
+    padding: 12px;
+  }
+
+  .sn-install-modal__card {
+    max-height: 92vh;
+    border-radius: 20px;
+  }
+
+  .sn-install-modal__header {
+    padding: 13px 14px;
+  }
+
+  .sn-install-modal__appIcon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sn-install-modal__title {
+    font-size: 16px;
+  }
+
+  .sn-install-modal__body {
+    padding: 12px 13px 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sn-install,
+  .sn-install-toast,
+  .sn-install-modal {
+    animation: none;
+  }
+
+  .sn-install__spinner {
+    animation-duration: 2.4s;
+  }
+}

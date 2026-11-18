@@ -13,6 +13,7 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Hand,
   HelpCircle,
   Keyboard,
   MessageSquare,
@@ -34,7 +35,7 @@ import {
   type RecogniserResult,
 } from "../model/recogniser";
 import { drawHandOverlay } from "../components/live/handDrawing";
-import { AnimationBlock } from "../components/AnimationBlock";
+import { StaffSignCard } from "../components/live/StaffSignCard";
 import type {
   HandInfo,
   HandLandmarksPerFrame,
@@ -46,6 +47,8 @@ interface ReviewState extends RecogniserResult {
   capturedFrames: number;
   durationMs: number;
 }
+
+const MIN_LIVE_SIGN_FRAMES = 3;
 
 function formatClock(ms: number, compact: boolean): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -167,6 +170,8 @@ export function LiveSigningScreen() {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraSectionRef = useRef<HTMLElement | null>(null);
+  const doneButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const frameRef = useRef<HandLandmarksPerFrame | null>(null);
   const handInfosRef = useRef<HandInfo[]>([]);
@@ -181,7 +186,11 @@ export function LiveSigningScreen() {
   const metadataRef = useRef<ModelMetadata | null>(null);
   const localStartRef = useRef(Date.now());
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const previousMessageCountRef = useRef(messages.length);
+  const conversationRef = useRef<HTMLElement | null>(null);
+  const replySignButtonRef = useRef<HTMLButtonElement | null>(null);
+  const incomingPrimaryRef = useRef<HTMLButtonElement | null>(null);
+  const seenStaffIdsRef = useRef<Set<string>>(new Set());
+  const historySeededRef = useRef(false);
   const mountedRef = useRef(true);
 
   const [cameraOn, setCameraOn] = useState(true);
@@ -198,6 +207,13 @@ export function LiveSigningScreen() {
   const [ending, setEnding] = useState(false);
   const [conversationOpen, setConversationOpen] = useState(false);
   const [unread, setUnread] = useState(false);
+  const [incomingMessageId, setIncomingMessageId] = useState<string | null>(
+    null,
+  );
+  const [replyingTo, setReplyingTo] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [connectingGrace, setConnectingGrace] = useState(true);
   const [, setStatusTick] = useState(0);
@@ -307,6 +323,19 @@ export function LiveSigningScreen() {
   useEffect(() => {
     void initialiseLandmarker();
   }, [initialiseLandmarker]);
+
+  useEffect(() => {
+    if (metadataRef.current) return;
+    let cancelled = false;
+    void loadModelMetadata()
+      .then((metadata) => {
+        if (!cancelled) metadataRef.current = metadata;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     document.body.classList.add("sn-live-scrollable");
@@ -461,28 +490,51 @@ export function LiveSigningScreen() {
   }, [messages.length, conversationOpen]);
 
   useEffect(() => {
-    if (
-      messages.length > previousMessageCountRef.current &&
-      isMobileLayout &&
-      !conversationOpen
-    ) {
-      setUnread(true);
+    const staffMessages = messages.filter((message) => message.sender === "staff");
+
+    if (!historySeededRef.current) {
+      if (messages.length === 0 && !isConnected) return;
+      staffMessages.forEach((message) => seenStaffIdsRef.current.add(message.id));
+      historySeededRef.current = true;
+      return;
     }
-    previousMessageCountRef.current = messages.length;
-  }, [messages.length, isMobileLayout, conversationOpen]);
+
+    const unseen = staffMessages.filter(
+      (message) => !seenStaffIdsRef.current.has(message.id),
+    );
+    if (unseen.length === 0) return;
+
+    unseen.forEach((message) => seenStaffIdsRef.current.add(message.id));
+
+    if (conversationOpen) {
+      setUnread(false);
+      return;
+    }
+
+    if (isMobileLayout) setUnread(true);
+    setIncomingMessageId(unseen[unseen.length - 1].id);
+  }, [messages, isConnected, conversationOpen, isMobileLayout]);
+
+  useEffect(() => {
+    if (!incomingMessageId) return;
+    incomingPrimaryRef.current?.focus();
+  }, [incomingMessageId]);
 
   useEffect(() => {
     if (conversationOpen) setUnread(false);
   }, [conversationOpen]);
 
+  const shouldLockBody =
+    Boolean(incomingMessageId) || (isMobileLayout && conversationOpen);
+
   useEffect(() => {
-    if (!isMobileLayout || !conversationOpen) return;
+    if (!shouldLockBody) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [isMobileLayout, conversationOpen]);
+  }, [shouldLockBody]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -491,11 +543,15 @@ export function LiveSigningScreen() {
         setConfirmEnd(false);
         return;
       }
+      if (incomingMessageId) {
+        setIncomingMessageId(null);
+        return;
+      }
       if (conversationOpen) setConversationOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [confirmEnd, conversationOpen]);
+  }, [confirmEnd, conversationOpen, incomingMessageId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -541,9 +597,9 @@ export function LiveSigningScreen() {
   const handleDone = useCallback(async () => {
     if (processingRef.current || reviewRef.current) return;
 
-    if (!activeRecordingRef.current) {
+    if (!activeRecordingRef.current && capturedFramesRef.current === 0) {
       setActionError(
-        "No signing captured yet. Show your hands, sign, then tap Done signing.",
+        "No hand frames captured yet. Keep your hands in view, hold the sign for a moment, then tap Done signing.",
       );
       return;
     }
@@ -558,11 +614,20 @@ export function LiveSigningScreen() {
       startedAt && endedAt ? Math.max(0, endedAt - startedAt) : 0;
     const recording = stopRecording();
 
-    if (!recording || capturedFrames < SIGN_CONFIG.MIN_FRAMES) {
+    if (!recording) {
       resetSequence(true);
       cooldownUntilRef.current = 0;
       setActionError(
-        "Not enough signing captured. Keep your hands in view a little longer, then try again.",
+        "The captured sequence could not be read. Tap Redo and sign again.",
+      );
+      return;
+    }
+
+    if (capturedFrames < MIN_LIVE_SIGN_FRAMES) {
+      resetSequence(true);
+      cooldownUntilRef.current = 0;
+      setActionError(
+        `Only ${capturedFrames} hand frame${capturedFrames === 1 ? "" : "s"} captured. Hold the sign a little longer, then tap Done signing.`,
       );
       return;
     }
@@ -638,6 +703,7 @@ export function LiveSigningScreen() {
     try {
       await confirmAndSend(draft.trim());
       resetSequence(false);
+      setReplyingTo(null);
       cooldownUntilRef.current = performance.now() + 1400;
     } catch (err) {
       setActionError(
@@ -654,6 +720,47 @@ export function LiveSigningScreen() {
     confirmAndSend,
     resetSequence,
   ]);
+
+  const handleReplyWithSign = useCallback((message: Message | null) => {
+    setReplyingTo(
+      message
+        ? { id: message.id, text: message.text }
+        : { id: "", text: "" },
+    );
+    setConversationOpen(false);
+    window.requestAnimationFrame(() => {
+      cameraSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      doneButtonRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const handleReplyWithText = useCallback(() => {
+    setConversationOpen(false);
+    goToStep("text");
+  }, [goToStep]);
+
+  const handleOpenIncomingConversation = useCallback(() => {
+    setIncomingMessageId(null);
+    setUnread(false);
+    if (isMobileLayout) {
+      setConversationOpen(true);
+      return;
+    }
+    conversationRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+    window.requestAnimationFrame(() =>
+      replySignButtonRef.current?.focus({ preventScroll: true }),
+    );
+  }, [isMobileLayout]);
+
+  const handleDismissIncoming = useCallback(() => {
+    setIncomingMessageId(null);
+  }, []);
 
   const handleEndSession = useCallback(async () => {
     setEnding(true);
@@ -782,6 +889,12 @@ export function LiveSigningScreen() {
   const signedSigns = messages.filter(
     (message) => message.sender === "user" && message.method === "sign",
   );
+  const latestStaffMessage =
+    [...messages].reverse().find((message) => message.sender === "staff") ??
+    null;
+  const incomingMessage = incomingMessageId
+    ? messages.find((message) => message.id === incomingMessageId) ?? null
+    : null;
   const latestMessage = messages[messages.length - 1];
   const latestSender = latestMessage
     ? latestMessage.sender === "staff"
@@ -807,6 +920,26 @@ export function LiveSigningScreen() {
     topResult.sign === "unknown" ||
     topResult.probability < SIGN_CONFIG.LOW_CONFIDENCE_THRESHOLD;
 
+  const hasSignActivity =
+    recordingActive || processing || review !== null || capturedFrames > 0;
+  const pendingSignText = review
+    ? draft.trim() ||
+      (topResult && topResult.sign !== "unknown"
+        ? topResult.sign
+        : "Unrecognised sign")
+    : "";
+  const signsHint = processing
+    ? "Translating your captured hand movement…"
+    : recordingActive
+      ? visibleHands > 0
+        ? "Capturing your hand movement…"
+        : "Signing paused — show your hands."
+      : review
+        ? "Recognised sign — confirm or edit below."
+        : "Signs you accept appear here.";
+  const showSignsPanel =
+    !isMobileLayout || hasSignActivity || signedSigns.length > 0;
+
   const renderConfidence = (
     info: HandInfo | undefined,
     label: "Left hand" | "Right hand",
@@ -825,7 +958,9 @@ export function LiveSigningScreen() {
     return (
       <div
         key={message.id}
-        className={`sn-msg ${isStaff ? "sn-msg--staff" : "sn-msg--user"}`}
+        className={`sn-msg ${
+          isStaff ? "sn-msg--staff sn-msg--sign" : "sn-msg--user"
+        }`}
       >
         <span className="sn-msg__label">
           {isStaff
@@ -835,19 +970,15 @@ export function LiveSigningScreen() {
               : "You"}
         </span>
         <span className="sn-msg__bubble">{message.text}</span>
-        {isStaff && message.animation ? (
-          <div className="sn-msg__animation">
-            <AnimationBlock
-              messageId={message.id}
-              text={message.text}
-              animation={message.animation}
-              dataSaver={dataSaver}
-              reduceMotion={reduceMotion}
-              onRetry={(messageId) =>
-                void retryAnimation(sessionId ?? "", messageId)
-              }
-            />
-          </div>
+        {isStaff ? (
+          <StaffSignCard
+            message={message}
+            dataSaver={dataSaver}
+            reduceMotion={reduceMotion}
+            onRetry={(messageId) =>
+              void retryAnimation(sessionId ?? "", messageId)
+            }
+          />
         ) : null}
         <span className="sn-msg__meta">
           {formatMessageTime(message.timestamp)}
@@ -934,6 +1065,7 @@ export function LiveSigningScreen() {
         <div className="sn-live-body">
           <main className="sn-live-main">
             <section
+              ref={cameraSectionRef}
               className="sn-camera"
               aria-label="Live camera and hand tracking"
             >
@@ -1119,25 +1251,55 @@ export function LiveSigningScreen() {
               </div>
             ) : null}
 
-            <section className="sn-signs" aria-label="Signs so far">
-              <span className="sn-signs__title">Signs so far</span>
-              <span className="sn-signs__hint">
-                Signs you accept appear here.
-              </span>
-              <div className="sn-signs__chips">
-                {signedSigns.length === 0 ? (
-                  <span className="sn-signs__empty">
-                    No signs accepted yet.
-                  </span>
-                ) : (
-                  signedSigns.slice(-12).map((message) => (
+            {showSignsPanel ? (
+              <section className="sn-signs" aria-label="Signs so far">
+                <span className="sn-signs__title">Signs so far</span>
+                <span className="sn-signs__hint">{signsHint}</span>
+                <div className="sn-signs__chips">
+                  {signedSigns.slice(-12).map((message) => (
                     <span key={message.id} className="sn-signs__chip">
                       {message.text}
                     </span>
-                  ))
-                )}
-              </div>
-            </section>
+                  ))}
+
+                  {recordingActive ? (
+                    <span className="sn-signs__chip sn-signs__chip--live">
+                      <span className="sn-signs__dot" aria-hidden="true" />
+                      Signing · {durationSeconds.toFixed(1)} s · {capturedFrames} frames
+                    </span>
+                  ) : null}
+
+                  {processing ? (
+                    <span className="sn-signs__chip sn-signs__chip--processing">
+                      <span className="sn-live-spinner sn-live-spinner--purple" />
+                      Translating sign…
+                    </span>
+                  ) : null}
+
+                  {review ? (
+                    <span className="sn-signs__chip sn-signs__chip--pending">
+                      {pendingSignText}
+                      <span className="sn-signs__chipTag">Pending</span>
+                    </span>
+                  ) : null}
+
+                  {!recordingActive &&
+                  !processing &&
+                  !review &&
+                  capturedFrames > 0 ? (
+                    <span className="sn-signs__chip sn-signs__chip--paused">
+                      {capturedFrames} frames captured
+                    </span>
+                  ) : null}
+
+                  {signedSigns.length === 0 && !hasSignActivity ? (
+                    <span className="sn-signs__empty">
+                      No signs accepted yet.
+                    </span>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
 
             {review ? (
               <section className="sn-review" aria-label="Review recognised sign">
@@ -1170,6 +1332,13 @@ export function LiveSigningScreen() {
                     meant, or tap Redo to sign again.
                   </p>
                 ) : null}
+                {review.capturedFrames < SIGN_CONFIG.MIN_FRAMES ? (
+                  <p className="sn-review__note">
+                    Short capture ({review.capturedFrames} hand frame
+                    {review.capturedFrames === 1 ? "" : "s"}). Recognition may
+                    be approximate — edit if needed.
+                  </p>
+                ) : null}
                 <div className="sn-review__actions">
                   <button
                     type="button"
@@ -1198,9 +1367,34 @@ export function LiveSigningScreen() {
               </section>
             ) : null}
 
+            {replyingTo ? (
+              <div className="sn-reply-banner" role="status">
+                <span className="sn-reply-banner__icon" aria-hidden="true">
+                  <MessageSquare size={16} strokeWidth={2.3} />
+                </span>
+                <div className="sn-reply-banner__body">
+                  <span className="sn-reply-banner__label">
+                    Replying to {counterName}
+                  </span>
+                  <p className="sn-reply-banner__text">
+                    {replyingTo.text || "Send a sign or text reply."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="sn-reply-banner__close"
+                  onClick={() => setReplyingTo(null)}
+                  aria-label="Cancel reply"
+                >
+                  <X size={16} strokeWidth={2.4} />
+                </button>
+              </div>
+            ) : null}
+
             <section className="sn-controls" aria-label="Signing controls">
               <div className="sn-controls__primary">
                 <button
+                  ref={doneButtonRef}
                   type="button"
                   className="sn-done"
                   onClick={() => void handleDone()}
@@ -1273,6 +1467,7 @@ export function LiveSigningScreen() {
           </main>
 
           <aside
+            ref={conversationRef}
             className={`sn-convo ${
               isMobileLayout
                 ? conversationOpen
@@ -1305,6 +1500,12 @@ export function LiveSigningScreen() {
                   <span className="sn-convo__unread" aria-label="New message" />
                 ) : null}
               </h2>
+              {latestStaffMessage ? (
+                <span className="sn-convo__signBadge">
+                  <Hand size={11} strokeWidth={2.3} aria-hidden="true" />
+                  2D
+                </span>
+              ) : null}
               <span
                 className={`sn-convo__live ${
                   connectionState === "connected"
@@ -1375,6 +1576,31 @@ export function LiveSigningScreen() {
                 )}
               </button>
             ) : null}
+
+            <div className="sn-convo__reply">
+              <span className="sn-convo__replyLabel">
+                Reply to {counterName}
+              </span>
+              <div className="sn-convo__replyActions">
+                <button
+                  ref={replySignButtonRef}
+                  type="button"
+                  className="sn-reply-btn sn-reply-btn--sign"
+                  onClick={() => handleReplyWithSign(latestStaffMessage)}
+                >
+                  <Camera size={15} strokeWidth={2.3} aria-hidden="true" />
+                  Reply with sign
+                </button>
+                <button
+                  type="button"
+                  className="sn-reply-btn sn-reply-btn--text"
+                  onClick={handleReplyWithText}
+                >
+                  <Keyboard size={15} strokeWidth={2.3} aria-hidden="true" />
+                  Reply with text
+                </button>
+              </div>
+            </div>
           </aside>
         </div>
       </div>
@@ -1385,6 +1611,78 @@ export function LiveSigningScreen() {
           onClick={() => setConversationOpen(false)}
           aria-hidden="true"
         />
+      ) : null}
+
+      {incomingMessage && !confirmEnd ? (
+        <div
+          className="sn-incoming"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sn-incoming-title"
+          onClick={handleDismissIncoming}
+        >
+          <div
+            className="sn-incoming__card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="sn-incoming__header">
+              <span className="sn-incoming__icon" aria-hidden="true">
+                <MessageSquare size={20} strokeWidth={2.2} />
+              </span>
+              <div className="sn-incoming__heading">
+                <h2 className="sn-incoming__title" id="sn-incoming-title">
+                  New message from {counterName}
+                </h2>
+                <p className="sn-incoming__subtitle">
+                  Message sent · 2D sign below
+                </p>
+              </div>
+              <button
+                type="button"
+                className="sn-incoming__close"
+                onClick={handleDismissIncoming}
+                aria-label="Dismiss message popup"
+              >
+                <X size={18} strokeWidth={2.4} />
+              </button>
+            </header>
+
+            <div className="sn-incoming__body">
+              <span className="sn-incoming__eyebrow">Message</span>
+              <p className="sn-incoming__text">{incomingMessage.text}</p>
+              <StaffSignCard
+                message={incomingMessage}
+                dataSaver={dataSaver}
+                reduceMotion={reduceMotion}
+                onRetry={(messageId) =>
+                  void retryAnimation(sessionId ?? "", messageId)
+                }
+              />
+              <p className="sn-incoming__hint">
+                You can reply with sign or text from the conversation.
+              </p>
+            </div>
+
+            <div className="sn-incoming__actions">
+              <button
+                ref={incomingPrimaryRef}
+                type="button"
+                className="sn-incoming__primary"
+                onClick={handleOpenIncomingConversation}
+              >
+                <MessageSquare size={17} strokeWidth={2.3} />
+                View conversation &amp; reply
+              </button>
+              <button
+                type="button"
+                className="sn-incoming__secondary"
+                onClick={handleDismissIncoming}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {confirmEnd ? (

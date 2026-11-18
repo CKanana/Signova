@@ -20,7 +20,7 @@ import {
   updateSessionStatus,
   logSessionEvent,
 } from "../services/sessionService.js";
-import { sendMessage } from "../services/messageService.js";
+import { sendMessage, enqueueAnimationJob } from "../services/messageService.js";
 import { emitSessionActive, emitSessionRejected } from "./gateway.js";
 import { Teller } from "../models/teller.js";
 
@@ -169,6 +169,14 @@ export function registerSocketHandlers(io: Server, socket: Socket & { auth?: Acc
           sessionId: session._id.toString(),
           confidence: payload.confidence,
         });
+      }
+
+      if (message.sender === "STAFF" && message.animation?.status === "pending") {
+        void enqueueAnimationJob(
+          message._id.toString(),
+          session._id.toString(),
+          message.text,
+        );
       }
 
       const ackRes: { ok: boolean; messageId: string; sender: string; isConfirmed: boolean } = {

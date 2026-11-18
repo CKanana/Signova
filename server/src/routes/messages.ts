@@ -1,5 +1,11 @@
 import { Router } from "express";
-import { listMessagesHandler, sendMessageHandler, animationStreamHandler, retryAnimationHandler } from "../controllers/messageController.js";
+import {
+  listMessagesHandler,
+  sendMessageHandler,
+  animationStreamHandler,
+  retryAnimationHandler,
+  getMessagePoseHandler,
+} from "../controllers/messageController.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router({ mergeParams: true });
@@ -10,6 +16,7 @@ router.get("/", listMessagesHandler);
 router.post("/", sendMessageHandler);
 // Phase 2: session-scoped animation video streaming (unguessable, not public).
 router.get("/:messageId/animation", animationStreamHandler);
+router.get("/:messageId/pose", getMessagePoseHandler);
 // Phase 2: manual retry for one message.
 router.post("/:messageId/retry", retryAnimationHandler);
 

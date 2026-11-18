@@ -149,6 +149,9 @@ const detected = await page.evaluate(() => {
   return {
     pills: [...document.querySelectorAll(".sn-camera__pill")].map((el) => el.textContent?.trim()),
     confidence: [...document.querySelectorAll(".sn-camera__confidence")].map((el) => el.textContent?.trim()),
+    signsChips: [...document.querySelectorAll(".sn-signs__chip")].map((el) => el.textContent?.replace(/\s+/g, " ").trim()),
+    signsEmpty: Boolean(document.querySelector(".sn-signs__empty")),
+    signsHint: document.querySelector(".sn-signs__hint")?.textContent?.trim(),
     opaqueCanvasPixels: opaque,
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,
@@ -169,7 +172,10 @@ const review = await page.evaluate(() => ({
   confidence: document.querySelector(".sn-review__confidence")?.textContent?.trim(),
   draft: document.querySelector(".sn-review__input")?.value,
   note: document.querySelector(".sn-review__note")?.textContent?.trim() ?? null,
-  signedChips: [...document.querySelectorAll(".sn-signs__chip")].map((el) => el.textContent),
+  signedChips: [...document.querySelectorAll(".sn-signs__chip")].map((el) => el.textContent?.replace(/\s+/g, " ").trim()),
+  signsEmpty: Boolean(document.querySelector(".sn-signs__empty")),
+  signsHint: document.querySelector(".sn-signs__hint")?.textContent?.trim(),
+  notes: [...document.querySelectorAll(".sn-review__note")].map((el) => el.textContent?.replace(/\s+/g, " ").trim()),
   doneDisabled: document.querySelector(".sn-done")?.disabled,
 }));
 
@@ -284,7 +290,11 @@ console.log(
     sendLabel: document.querySelector(".sn-review__send")?.textContent?.trim(),
     doneDisabled: document.querySelector(".sn-done")?.disabled,
     labels: [...document.querySelectorAll(".sn-round")].map((el) => el.textContent?.trim()),
-    signsHidden: getComputedStyle(document.querySelector(".sn-signs")).display === "none",
+    signsVisible: (() => {
+      const panel = document.querySelector(".sn-signs");
+      return panel ? getComputedStyle(panel).display !== "none" : false;
+    })(),
+    signsChips: [...document.querySelectorAll(".sn-signs__chip")].map((el) => el.textContent?.replace(/\s+/g, " ").trim()),
     overflowX: document.documentElement.scrollWidth > window.innerWidth,
   }));
   await mobilePage.screenshot({ path: `${OUT}/live-mobile-review.png`, fullPage: true });

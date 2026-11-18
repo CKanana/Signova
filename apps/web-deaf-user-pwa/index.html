@@ -9,8 +9,20 @@
       content="Signova — ASL to text translation for Deaf and hard-of-hearing service users."
     />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Signova" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="theme-color" content="#5B2A86" />
     <title>Signova</title>
+    <script>
+      window.__signovaInstallPrompt = null;
+      window.addEventListener("beforeinstallprompt", function (event) {
+        event.preventDefault();
+        window.__signovaInstallPrompt = event;
+        window.dispatchEvent(new Event("signova-install-available"));
+      });
+    </script>
     <!-- Early theme script to eliminate flash of light mode before JS loads. -->
     <script>
       (function () {

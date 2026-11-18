@@ -7,6 +7,7 @@ is NOT modified.
 Endpoints:
   GET  /health
   POST /v1/animations  {"text": "I need help"}
+  POST /v1/animations/structured  {"text": "I need help"}
 
 Each request renders into its own unique file inside the service's OUTPUT_DIR
 (never arbitrary filesystem paths) and returns verified metadata.
@@ -20,6 +21,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 
@@ -34,6 +36,7 @@ from animation_service import (  # noqa: E402
     MAX_REQUEST_SIZE,
     OUTPUT_DIR,
     generate_animations,
+    generate_pose_sequence,
     validate_text,
 )
 
@@ -67,6 +70,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -190,6 +195,42 @@ async def create_animation(request: Request, body: AnimRequest):
             "X-SignBridge-Codec": codec or "mpeg4",
         },
     )
+
+
+@app.post("/v1/animations/structured", status_code=200)
+async def create_structured_pose(body: AnimRequest):
+    """Return the real SignBridge joint sequence for English text.
+
+    The response is consumed by Signova's own SVG avatar. It contains the
+    gloss sequence, 30 fps interpolated frames, transition frames, joint names
+    and normalized joint coordinates. No SignBridge video or avatar is used.
+    """
+    try:
+        text = validate_text(body.text)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        result = generate_pose_sequence(text)
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Pose generation failed for text: %r", text)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pose generation failed: {exc}",
+        ) from exc
+
+    logger.info(
+        "Pose sequence text=%r glosses=%s frames=%s duration_ms=%s",
+        text,
+        result["glosses"],
+        result["frameCount"],
+        result["durationMs"],
+    )
+    return JSONResponse(content=result)
 
 
 @app.exception_handler(HTTPException)
