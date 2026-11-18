@@ -165,8 +165,9 @@ export function LiveSigningScreen() {
     retryAnimation,
   } = useSession();
 
-  const { width } = useViewport();
-  const isMobileLayout = width < 768;
+  const { width, height } = useViewport();
+  const isPortrait = height > width;
+  const isMobileLayout = width < 768 || (isPortrait && width <= 1180);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

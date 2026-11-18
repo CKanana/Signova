@@ -41,9 +41,12 @@ export async function getMessagePose(messageId, text) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), config.signbridgeTimeoutMs);
     try {
+        const headers = { "content-type": "application/json" };
+        if (config.signbridgeApiKey)
+            headers["x-api-key"] = config.signbridgeApiKey;
         const res = await fetch(`${config.signbridgeUrl}/v1/animations/structured`, {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers,
             body: JSON.stringify({ text }),
             signal: controller.signal,
         });

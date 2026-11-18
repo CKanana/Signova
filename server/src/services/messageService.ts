@@ -38,6 +38,7 @@ const Msg = Message as unknown as Model<IMessage>;
 
 const signbridgeEnabled = config.signbridgeEnabled;
 const signbridgeUrl = config.signbridgeUrl;
+const signbridgeApiKey = config.signbridgeApiKey;
 const signbridgeTimeoutMs = config.signbridgeTimeoutMs;
 const signbridgeMaxChars = config.signbridgeMaxChars;
 const signbridgeVideoRetentionSeconds = config.signbridgeVideoRetentionSeconds;
@@ -334,9 +335,11 @@ async function runAnimationJob(item: QueueItem): Promise<void> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ANIMATION_TIMEOUT_MS);
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (signbridgeApiKey) headers["x-api-key"] = signbridgeApiKey;
     const res = await fetch(`${ANIMATION_SERVICE_URL}/v1/animations`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ text }),
       signal: controller.signal,
     });

@@ -1923,7 +1923,7 @@ body.sn-live-scrollable #root {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (max-width: 1180px) {
   .sn-live {
     padding: 0;
     background: #141117;
@@ -2341,6 +2341,26 @@ body.sn-live-scrollable #root {
     min-height: 46px;
     padding: 0 14px;
     font-size: 12px;
+  }
+}
+
+/* Portrait tablets/laptops use the single-column layout, but keep the header
+   controls that are only hidden on phones. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1180px) {
+  .sn-live-header__back {
+    display: none;
+  }
+
+  .sn-live-logo {
+    display: grid;
+  }
+
+  .sn-live-header__meta {
+    display: block;
+  }
+
+  .sn-live-header__actions {
+    display: flex;
   }
 }
 

@@ -71,9 +71,11 @@ committed, logged, or pasted into documentation.
 | `TRANSLATION_LOW_CONFIDENCE` | `0.6` (server-side mock/translation threshold) |
 | `PASSWORD_RESET_TTL_MINUTES` | `15` |
 | `SIGNOVA_ORG_ID` | Optional Atlas organization `_id` if more than one active org exists |
-| `SIGNBRIDGE_ENABLED` | `false` on Render V1 |
-| `SIGNBRIDGE_URL` | Leave at default only if a hosted SignBridge exists |
-| `SIGNBRIDGE_*` | Defaults are safe; see `server/.env.example` |
+| `SIGNBRIDGE_ENABLED` | `true` only when a reachable hosted SignBridge exists |
+| `SIGNBRIDGE_URL` | Public HTTPS URL of the hosted SignBridge service, no trailing slash |
+| `SIGNBRIDGE_API_KEY` | **secret**, must equal the SignBridge service's `SIGNBRIDGE_API_KEY` |
+| `SIGNBRIDGE_TIMEOUT_MS` | Raise (e.g. `120000`) if the SignBridge service cold-starts |
+| `SIGNBRIDGE_*` | Remaining defaults are safe; see `server/.env.example` |
 
 ### Do not set on Render
 

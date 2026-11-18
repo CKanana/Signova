@@ -31,6 +31,10 @@ const envSchema = z.object({
     // the 2D signing MP4. These knobs gate and throttle that work.
     SIGNBRIDGE_ENABLED: z.coerce.boolean().default(false),
     SIGNBRIDGE_URL: z.string().default("http://127.0.0.1:8001"),
+    // Shared secret sent as X-API-Key to the SignBridge service. Must match the
+    // SignBridge service's SIGNBRIDGE_API_KEY. Optional for the phase-1 service,
+    // required by the phase-2 service that enforces authentication.
+    SIGNBRIDGE_API_KEY: z.string().optional(),
     SIGNBRIDGE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     SIGNBRIDGE_MAX_CHARS: z.coerce.number().int().positive().default(280),
     // Seconds. Old videos are deleted after this retention window.
@@ -167,6 +171,7 @@ function getConfig() {
         // ---- Text-to-ASL animation service (SignBridge) ----
         signbridgeEnabled: raw.SIGNBRIDGE_ENABLED,
         signbridgeUrl: raw.SIGNBRIDGE_URL,
+        signbridgeApiKey: raw.SIGNBRIDGE_API_KEY?.trim() || undefined,
         signbridgeTimeoutMs: raw.SIGNBRIDGE_TIMEOUT_MS,
         signbridgeMaxChars: raw.SIGNBRIDGE_MAX_CHARS,
         signbridgeVideoRetentionSeconds: raw.SIGNBRIDGE_VIDEO_RETENTION_SECONDS,
@@ -204,6 +209,7 @@ export const config = {
     // ---- SignBridge animation service ----
     get signbridgeEnabled() { return getConfig().signbridgeEnabled; },
     get signbridgeUrl() { return getConfig().signbridgeUrl; },
+    get signbridgeApiKey() { return getConfig().signbridgeApiKey; },
     get signbridgeTimeoutMs() { return getConfig().signbridgeTimeoutMs; },
     get signbridgeMaxChars() { return getConfig().signbridgeMaxChars; },
     get signbridgeVideoRetentionSeconds() { return getConfig().signbridgeVideoRetentionSeconds; },
