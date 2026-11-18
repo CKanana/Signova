@@ -20,8 +20,18 @@ const FALLBACK_API_URL = "http://localhost:4000";
  *  model (LiteRT.js). Leave false for the mock placeholder. */
 export const USE_MODEL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_USE_MODEL === "true");
 
+const configuredApiUrl = import.meta.env?.VITE_API_URL;
+
+/**
+ * An explicitly empty VITE_API_URL means "same origin", which uses the Vite
+ * dev proxy for /api and /socket.io. That is the reliable mode when the PWA
+ * is opened from a phone through a forwarded port: the phone only needs the
+ * frontend URL and Vite forwards API and websocket traffic to the host.
+ */
 export const API_BASE_URL: string =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || FALLBACK_API_URL;
+  configuredApiUrl !== undefined
+    ? configuredApiUrl.replace(/\/+$/, "")
+    : FALLBACK_API_URL;
 
 /**
  * Signing screen configuration (camera + capture + drawing + recognition).

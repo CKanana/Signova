@@ -232,15 +232,19 @@ async function makePage(width, height, routesOptions, path = "/live") {
 }
 
 {
-  const { context, page } = await makePage(1440, 900, {}, "/response");
-  await page.waitForSelector(".sn-avatar-card", { timeout: 20_000 });
-  await page.waitForSelector(".sn-avatar-stage svg", { timeout: 20_000 });
-  const response = await avatarMetrics(page);
-  await page.screenshot({ path: `${OUT}/pwa-avatar-response.png`, fullPage: true });
-  console.log(JSON.stringify({ response }, null, 2));
+  const { context, page } = await makePage(1440, 900);
+  await page.waitForSelector(".sn-live-shell", { timeout: 20_000 });
+  await page.getByRole("button", { name: "Use text" }).click();
+  await page.waitForSelector(".sn-avatar-card", { state: "visible", timeout: 20_000 });
+  await page.waitForSelector(".sn-avatar-stage svg", { state: "visible", timeout: 20_000 });
+  await page.waitForTimeout(1700);
+  const textChat = await avatarMetrics(page);
+  await page.screenshot({ path: `${OUT}/pwa-avatar-chat-text.png`, fullPage: true });
+  console.log(JSON.stringify({ textChat }, null, 2));
   await context.close();
 }
 
 await browser.close();
 console.log("ERRORS:", errors.length ? JSON.stringify(errors.slice(0, 8), null, 2) : "(none)");
+
 

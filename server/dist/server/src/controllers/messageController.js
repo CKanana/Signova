@@ -5,6 +5,8 @@ import { paramId } from "../utils/params.js";
 import { getIO } from "../realtime/gateway.js";
 import { sessionRoom, S2C_STAFF, S2C_MOBILE, NAMESPACE, orgTellersRoom } from "../realtime/events.js";
 import { Message } from "../models/message.js";
+import { getSessionById } from "../services/sessionService.js";
+import { getMessagePose, PoseServiceError, } from "../services/poseService.js";
 import fs from "node:fs";
 const sendSchema = z.object({
     sender: z.enum(["USER", "STAFF"]),
@@ -43,11 +45,56 @@ export const listMessagesHandler = async (req, res) => {
     const messages = (await listMessages(req.auth.orgId, paramId(req)));
     res.json({ messages: messages.map((m) => ({ ...m.toJSON(), animation: serializeAnimation(m) })) });
 };
+export const getMessagePoseHandler = async (req, res) => {
+    const orgId = req.auth.orgId;
+    const sessionId = paramId(req);
+    const messageId = paramId(req, "messageId");
+    const session = await getSessionById(orgId, sessionId).catch(() => null);
+    if (!session) {
+        res.status(404).json({ error: "Session not found" });
+        return;
+    }
+    if (req.auth.role === "DEAF_USER" &&
+        session.deafUser.toString() !== String(req.auth.sub)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+    }
+    const message = (await Message.findOne({
+        _id: messageId,
+        session: sessionId,
+    }));
+    if (!message) {
+        res.status(404).json({ error: "Message not found" });
+        return;
+    }
+    if (message.sender !== "STAFF") {
+        res.status(400).json({ error: "Pose is only available for staff messages" });
+        return;
+    }
+    try {
+        const pose = await getMessagePose(messageId, message.text);
+        res.json({ pose });
+    }
+    catch (err) {
+        if (err instanceof PoseServiceError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        res.status(500).json({ error: "Could not prepare the 2D sign" });
+    }
+};
 export const sendMessageHandler = [
     validate({ body: sendSchema }),
     async (req, res) => {
         const orgId = req.auth.orgId;
         const sessionId = paramId(req);
+        // The sender is derived from the authenticated role so a Deaf user cannot
+        // impersonate staff (and trigger a text-to-sign animation) over REST.
+        const expectedSender = req.auth.role === "DEAF_USER" ? "USER" : "STAFF";
+        if (req.body.sender !== expectedSender) {
+            res.status(403).json({ error: "Sender does not match your role" });
+            return;
+        }
         // Persist immediately (animation initialised to "pending" when eligible).
         const message = await sendMessage(orgId, sessionId, req.body);
         const msg = message;
@@ -93,12 +140,27 @@ function streamFile(filePath, start, end) {
 export const animationStreamHandler = async (req, res) => {
     const sessionId = paramId(req);
     const messageId = paramId(req, "messageId");
-    const message = (await Message.findOne({ _id: messageId }));
+    // Session-scoped media: the caller must belong to the session's org, and a
+    // Deaf user may only stream their own session's animations.
+    const session = await getSessionById(req.auth.orgId, sessionId).catch(() => null);
+    if (!session) {
+        res.status(404).json({ error: "Animation not found" });
+        return;
+    }
+    if (req.auth.role === "DEAF_USER" &&
+        session.deafUser.toString() !== String(req.auth.sub)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+    }
+    const message = (await Message.findOne({
+        _id: messageId,
+        session: sessionId,
+    }));
     if (!message) {
         res.status(404).json({ error: "Animation not found" });
         return;
     }
-    if (message.session.toString() !== sessionId || message.sender !== "STAFF") {
+    if (message.sender !== "STAFF") {
         res.status(403).json({ error: "Forbidden" });
         return;
     }
@@ -148,13 +210,22 @@ export const animationStreamHandler = async (req, res) => {
 export const retryAnimationHandler = async (req, res) => {
     const sessionId = paramId(req);
     const messageId = paramId(req, "messageId");
-    const message = (await Message.findOne({ _id: messageId }));
-    if (!message) {
+    const session = await getSessionById(req.auth.orgId, sessionId).catch(() => null);
+    if (!session) {
         res.status(404).json({ error: "Message not found" });
         return;
     }
-    if (message.session.toString() !== sessionId) {
+    if (req.auth.role === "DEAF_USER" &&
+        session.deafUser.toString() !== String(req.auth.sub)) {
         res.status(403).json({ error: "Forbidden" });
+        return;
+    }
+    const message = (await Message.findOne({
+        _id: messageId,
+        session: sessionId,
+    }));
+    if (!message) {
+        res.status(404).json({ error: "Message not found" });
         return;
     }
     const a = message.animation;

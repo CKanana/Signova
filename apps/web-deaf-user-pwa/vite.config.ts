@@ -8,8 +8,11 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,tflite,json,wasm,woff2}"],
+        globPatterns: [
+          "**/*.{js,css,html,ico,png,svg,tflite,task,json,wasm,woff2,webmanifest}",
+        ],
         maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // allow large .wasm and .tflite assets
+        cleanupOutdatedCaches: true,
       },
       manifest: {
         id: "/",
@@ -60,6 +63,23 @@ export default defineConfig({
     // Vite rejects unknown Host headers by default (DNS-rebinding guard).
     allowedHosts: [".devtunnels.ms"],
     port: 5175,
+    strictPort: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
+      "/socket.io": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
+  preview: {
+    host: true,
+    allowedHosts: [".devtunnels.ms"],
+    port: 4173,
     strictPort: true,
     proxy: {
       "/api": {

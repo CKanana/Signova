@@ -1,7 +1,7 @@
 import { C2S, NAMESPACE, sessionRoom, orgTellersRoom, userRoom, S2C_MOBILE, S2C_STAFF, S2C_STAFF_FROM_SENDER, } from "./events.js";
 import { NotFoundError, ForbiddenError } from "../utils/errors.js";
 import { getSessionById, acceptSession, rejectSession, updateSessionStatus, } from "../services/sessionService.js";
-import { sendMessage } from "../services/messageService.js";
+import { sendMessage, enqueueAnimationJob } from "../services/messageService.js";
 import { emitSessionActive, emitSessionRejected } from "./gateway.js";
 import { Teller } from "../models/teller.js";
 /**
@@ -138,6 +138,9 @@ export function registerSocketHandlers(io, socket) {
                     confidence: payload.confidence,
                 });
             }
+            if (message.sender === "STAFF" && message.animation?.status === "pending") {
+                void enqueueAnimationJob(message._id.toString(), session._id.toString(), message.text);
+            }
             const ackRes = {
                 ok: true,
                 messageId: message._id.toString(),
@@ -181,6 +184,19 @@ export function registerSocketHandlers(io, socket) {
         }
     });
 }
+function serializeAnimation(m) {
+    const a = m.animation;
+    if (!a)
+        return null;
+    return {
+        status: a.status,
+        url: a.url ?? null,
+        durationMs: a.durationMs ?? null,
+        requestedAt: a.requestedAt ? new Date(a.requestedAt).toISOString() : null,
+        readyAt: a.readyAt ? new Date(a.readyAt).toISOString() : null,
+        error: a.error ?? null,
+    };
+}
 function serializeMessage(m) {
     return {
         id: m._id.toString(),
@@ -191,5 +207,6 @@ function serializeMessage(m) {
         confidence: m.confidence,
         isConfirmed: m.isConfirmed,
         timestamp: m.timestamp.toISOString(),
+        animation: serializeAnimation(m),
     };
 }

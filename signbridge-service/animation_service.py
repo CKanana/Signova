@@ -332,16 +332,30 @@ def generate_pose_sequence(text: str) -> dict[str, Any]:
             raise ValueError("The pose sequence is empty.")
 
         dropped: list[str] = []
+        dropped_letters: list[dict[str, str]] = []
         for line in buffer.getvalue().splitlines():
             match = re.search(r"Pose not available for:\s*(\S+)", line)
             if match:
                 dropped.append(match.group(1))
                 continue
-            match = re.search(r"Letter\s+(\S+)\s+not found", line)
+            match = re.search(
+                r"Letter\s+(\S+)\s+not found for name\s+(\S+)",
+                line,
+            )
             if match:
-                dropped.append(match.group(1))
+                dropped_letters.append(
+                    {"letter": match.group(1), "word": match.group(2)}
+                )
 
         unique_dropped = list(dict.fromkeys(dropped))
+        unique_letters: list[dict[str, str]] = []
+        seen_letters: set[tuple[str, str]] = set()
+        for item in dropped_letters:
+            key = (item["letter"], item["word"])
+            if key in seen_letters:
+                continue
+            seen_letters.add(key)
+            unique_letters.append(item)
         duration_ms = round((len(frames) / POSE_FPS) * 1000)
 
         return {
@@ -349,6 +363,7 @@ def generate_pose_sequence(text: str) -> dict[str, Any]:
             "text": stripped,
             "glosses": [name for _matrix, name in segments],
             "droppedWords": unique_dropped,
+            "droppedLetters": unique_letters,
             "fps": POSE_FPS,
             "durationMs": duration_ms,
             "frameCount": len(frames),

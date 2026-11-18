@@ -34,9 +34,10 @@ export const avatarSizes = {
   upperArm: 18,
   forearm: 15,
   sleeve: 22,
-  finger: 6,
-  thumb: 7,
-  palmRx: 12,
-  palmRy: 13.5,
+  finger: 8.5,
+  thumb: 9.5,
+  palmRx: 16,
+  palmRy: 17.5,
 } as const;
+
 

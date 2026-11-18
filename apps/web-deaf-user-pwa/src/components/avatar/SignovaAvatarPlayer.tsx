@@ -96,6 +96,12 @@ export function SignovaAvatarPlayer({
   );
   const gloss =
     pose?.glosses?.join(" · ") ?? message.text;
+  const missingLetters = [
+    ...new Set((pose?.droppedLetters ?? []).map((item) => item.letter)),
+  ];
+  const missingLetterWords = [
+    ...new Set((pose?.droppedLetters ?? []).map((item) => item.word)),
+  ];
   const status = loading
     ? "PREPARING"
     : error
@@ -230,10 +236,21 @@ export function SignovaAvatarPlayer({
               Replay
             </button>
           </div>
+          {missingLetters.length > 0 ? (
+            <div className="sn-avatar-missing">
+              No SignBridge pose for letter
+              {missingLetters.length === 1 ? "" : "s"} {missingLetters.join(", ")}
+              {missingLetterWords.length > 0
+                ? ` in ${missingLetterWords.map((word) => `“${word}”`).join(", ")}`
+                : ""}
+              . Those letters are skipped in the animation; the full message
+              remains in the caption.
+            </div>
+          ) : null}
           {pose!.droppedWords.length > 0 ? (
             <div className="sn-avatar-missing">
-              No sign available for: {pose!.droppedWords.join(", ")}. Those words
-              are not animated.
+              No SignBridge pose for: {pose!.droppedWords.join(", ")}. Those
+              words are skipped in the animation and remain in the caption.
             </div>
           ) : null}
         </>

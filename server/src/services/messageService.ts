@@ -63,6 +63,17 @@ const messageVideoPath = new Map<string, string>();
 /** Cache: normalised text -> { filePath, durationMs } for identical-text reuse. */
 const animationCache = new Map<string, { filePath: string; durationMs: number }>();
 
+/**
+ * Deterministic on-disk location for a message's MP4.
+ *
+ * The stream route resolves files by message id, so storing the file under a
+ * stable name lets a restarted server (which loses the in-memory map) keep
+ * serving animations that were generated before the restart.
+ */
+function messageVideoFile(messageId: string): string {
+  return path.join(VIDEO_STORAGE_DIR, `${messageId}.mp4`);
+}
+
 function normaliseText(text: string): string {
   return text.trim().toLowerCase();
 }
@@ -195,6 +206,9 @@ export async function setAnimationStatus(
         status: next.status,
         url: next.url ?? null,
         durationMs: next.durationMs ?? null,
+        requestedAt: next.requestedAt ? next.requestedAt.toISOString() : null,
+        readyAt: next.readyAt ? next.readyAt.toISOString() : null,
+        error: next.error ?? null,
       });
     } catch {
       // Socket emission is best-effort; history reload still carries the field.
@@ -289,16 +303,27 @@ async function runAnimationJob(item: QueueItem): Promise<void> {
   const key = normaliseText(text);
   const hit = animationCache.get(key);
   if (hit) {
-    messageVideoPath.set(messageId, hit.filePath);
-    await setAnimationStatus(messageId, sessionId, {
-      status: "ready",
-      url: `/api/sessions/${sessionId}/messages/${messageId}/animation`,
-      durationMs: hit.durationMs,
-    });
-    running = Math.max(0, running - 1);
-    queue = queue.filter((x) => x !== item);
-    processQueue();
-    return;
+    if (fs.existsSync(hit.filePath)) {
+      // Copy into this message's stable file so it survives a cache eviction
+      // of the original message and can be resolved after a server restart.
+      const target = messageVideoFile(messageId);
+      try {
+        fs.copyFileSync(hit.filePath, target);
+        messageVideoPath.set(messageId, target);
+        await setAnimationStatus(messageId, sessionId, {
+          status: "ready",
+          url: `/api/sessions/${sessionId}/messages/${messageId}/animation`,
+          durationMs: hit.durationMs,
+        });
+        running = Math.max(0, running - 1);
+        queue = queue.filter((x) => x !== item);
+        processQueue();
+        return;
+      } catch {
+        // Fall through to a fresh render if the cached file cannot be copied.
+      }
+    }
+    animationCache.delete(key);
   }
 
   // --- Call the SignBridge service -----------------------------------------
@@ -331,9 +356,10 @@ async function runAnimationJob(item: QueueItem): Promise<void> {
   }
 
   if (arrayBuffer) {
-    // Success: store the MP4 locally under an unguessable filename.
-    const filename = `${Date.now()}_${crypto.randomUUID().replace(/-/g, "")}.mp4`;
-    const filePath = path.join(VIDEO_STORAGE_DIR, filename);
+    // Success: store the MP4 locally under a deterministic, non-guessable
+    // per-message name so the stream route can resolve it after a restart.
+    fs.mkdirSync(VIDEO_STORAGE_DIR, { recursive: true });
+    const filePath = messageVideoFile(messageId);
     fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
     messageVideoPath.set(messageId, filePath);
     animationCache.set(key, { filePath, durationMs: durationMs ?? 0 });
@@ -380,6 +406,29 @@ export function enqueueAnimationJob(messageId: string, sessionId: string, text: 
   processQueue();
 }
 
+/**
+ * Re-enqueue staff messages whose animation was still pending/retrying when
+ * the process last stopped. The queue is in-memory only, so without this a
+ * restart would leave those messages stuck on "pending" forever.
+ */
+export async function requeuePendingAnimations(): Promise<number> {
+  if (!signbridgeEnabled) return 0;
+  const stuck = await Msg.find({
+    sender: "STAFF",
+    "animation.status": { $in: ["pending", "retry"] },
+  })
+    .select("_id session text")
+    .lean()
+    .exec();
+  let count = 0;
+  for (const m of stuck as Array<{ _id: unknown; session: unknown; text: string }>) {
+    if (!needsAnimation("STAFF", m.text ?? "")) continue;
+    enqueueAnimationJob(String(m._id), String(m.session), m.text);
+    count += 1;
+  }
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Circuit breaker + health
 // ---------------------------------------------------------------------------
@@ -423,7 +472,15 @@ export function registerVideoPath(messageId: string, filePath: string): void {
 
 /** Resolve the local filesystem path for a message's animation (stream route). */
 export function resolveVideoPath(messageId: string): string | undefined {
-  return messageVideoPath.get(messageId);
+  const known = messageVideoPath.get(messageId);
+  if (known) return known;
+  // A restarted server starts with an empty map: recover the stable file.
+  const recovered = messageVideoFile(messageId);
+  if (fs.existsSync(recovered)) {
+    messageVideoPath.set(messageId, recovered);
+    return recovered;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

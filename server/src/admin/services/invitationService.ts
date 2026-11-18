@@ -1,15 +1,17 @@
 import { Organization } from "../../models/organization.js";
 import { User } from "../../models/user.js";
 import { Invitation } from "../../models/invitation.js";
+import { SetupToken } from "../../models/setupToken.js";
 import { recordAudit } from "../../services/auditService.js";
 import { randomToken, hashToken } from "../../utils/crypto.js";
-import { sendMail, buildInvitationEmail, buildInvitationUrl } from "../../services/mailService.js";
+import { sendMail, buildInvitationEmail, buildInvitationUrl, buildSetupEmail } from "../../services/mailService.js";
 import type { Types } from "mongoose";
 import type { Role } from "../../../../shared/types/translation.js";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../utils/errors.js";
 import { assertPasswordPolicy } from "../../utils/passwordPolicy.js";
 import { hashPassword } from "../../services/tokenService.js";
 import { signChallengeToken } from "../../utils/jwt.js";
+import { config, BOOTSTRAP_SETUP_TOKEN_TTL_MS } from "../../config/env.js";
 
 const INVITE_TOKEN_BYTES = 32;
 const INVITE_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -250,6 +252,7 @@ export async function resendInvitation(
   orgId: string | Types.ObjectId,
   userId: string,
   req: import("express").Request,
+  invitedBy?: string | Types.ObjectId,
 ) {
   const org = await Organization.findById(orgId);
   if (!org) throw new NotFoundError("Organization not found.");
@@ -285,7 +288,7 @@ export async function resendInvitation(
     user: user._id,
     email: staffEmail,
     organization: orgId,
-    invitedBy: userId,
+    invitedBy: invitedBy ?? userId,
     tokenHash,
     status: "pending",
     expiresAt,
@@ -305,7 +308,7 @@ export async function resendInvitation(
     await recordAudit({
       action: "INVITE_EMAIL_FAILED",
       organization: String(orgId),
-      actor: String(userId),
+      actor: String(invitedBy ?? userId),
       target: staffEmail,
       req,
     });
@@ -329,4 +332,80 @@ export async function resendInvitation(
     invitationId: newInvitation._id.toString(),
     expiresAt: newInvitation.expiresAt,
   };
+}
+
+/**
+ * Re-issue a staff setup link.
+ *
+ * Creates a fresh single-use `password_setup` token, expires any previous
+ * setup tokens for that user, and sends the setup email. The actor performing
+ * the resend is recorded; the target email always comes from the user record.
+ */
+export async function resendStaffSetup(
+  orgId: string | Types.ObjectId,
+  userId: string,
+  invitedBy: string | Types.ObjectId,
+  req: import("express").Request,
+) {
+  const org = await Organization.findById(orgId);
+  if (!org) throw new NotFoundError("Organization not found.");
+
+  const user = await User.findOne({ _id: userId, organization: orgId, role: "STAFF" });
+  if (!user || !user.email) {
+    throw new NotFoundError("Staff member not found.");
+  }
+  if (user.isActive) {
+    throw new BadRequestError("This staff member has already completed account setup.");
+  }
+
+  const now = new Date();
+  await SetupToken.updateMany(
+    { user: user._id, usedAt: { $exists: false }, expiresAt: { $gt: now } },
+    { $set: { expiresAt: now } },
+  );
+
+  const rawToken = randomToken(INVITE_TOKEN_BYTES);
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + BOOTSTRAP_SETUP_TOKEN_TTL_MS);
+
+  const setupToken = await SetupToken.create({
+    user: user._id,
+    tokenHash,
+    scope: "password_setup",
+    expiresAt,
+  });
+
+  const setupUrl = new URL("/invite", config.appPublicBaseUrl);
+  setupUrl.searchParams.set("token", rawToken);
+  const payload = buildSetupEmail(user.name, org.name, setupUrl.toString(), expiresAt);
+
+  const sent = await sendMail({
+    to: user.email,
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html,
+  });
+
+  if (!sent) {
+    await SetupToken.deleteOne({ _id: setupToken._id });
+    await recordAudit({
+      action: "INVITE_EMAIL_FAILED",
+      organization: String(orgId),
+      actor: String(invitedBy),
+      target: user.email,
+      req,
+    });
+    throw new BadRequestError("Setup email could not be sent. Please try again later.");
+  }
+
+  await recordAudit({
+    action: "INVITE_EMAIL_SENT",
+    organization: String(orgId),
+    actor: String(invitedBy),
+    target: user._id.toString(),
+    meta: { to: user.email },
+    req,
+  });
+
+  return { ok: true, status: "sent" as const };
 }

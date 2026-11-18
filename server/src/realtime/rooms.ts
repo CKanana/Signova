@@ -223,6 +223,19 @@ export function registerSocketHandlers(io: Server, socket: Socket & { auth?: Acc
   });
 }
 
+function serializeAnimation(m: any) {
+  const a = m.animation;
+  if (!a) return null;
+  return {
+    status: a.status,
+    url: a.url ?? null,
+    durationMs: a.durationMs ?? null,
+    requestedAt: a.requestedAt ? new Date(a.requestedAt).toISOString() : null,
+    readyAt: a.readyAt ? new Date(a.readyAt).toISOString() : null,
+    error: a.error ?? null,
+  };
+}
+
 function serializeMessage(m: any) {
   return {
     id: m._id.toString(),
@@ -233,5 +246,6 @@ function serializeMessage(m: any) {
     confidence: m.confidence,
     isConfirmed: m.isConfirmed,
     timestamp: m.timestamp.toISOString(),
+    animation: serializeAnimation(m),
   };
 }

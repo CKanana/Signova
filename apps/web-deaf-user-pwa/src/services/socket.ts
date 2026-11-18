@@ -44,9 +44,12 @@ export type SocketErrorPayload = { message: string };
 export type AnimationPayload = {
   sessionId: string;
   messageId: string;
-  status: "pending" | "ready" | "failed" | "skipped";
+  status: "pending" | "ready" | "failed" | "skipped" | "retry";
   url: string | null;
   durationMs: number | null;
+  requestedAt?: string | null;
+  readyAt?: string | null;
+  error?: string | null;
 };
 
 type Handlers = {

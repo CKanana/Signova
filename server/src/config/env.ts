@@ -146,7 +146,7 @@ function getConfig(): {
   const raw = loadEnvFromProcessEnv();
 
   // --- Absolute-URL validation (explicitly constructed, not concatenated) ---
-  const urlKeys = ["APP_PUBLIC_BASE_URL", "ADMIN_PORTAL_URL"] as const;
+  const urlKeys = ["APP_PUBLIC_BASE_URL", "ADMIN_PORTAL_URL", "PASSWORD_RESET_BASE_URL"] as const;
   const problems: string[] = [];
   for (const key of urlKeys) {
     const value = raw[key];
@@ -158,22 +158,21 @@ function getConfig(): {
       problems.push(`${key} is not an absolute URL: ${value}`);
     }
   }
-  if (problems.length) {
-    throw new Error("[config] Invalid base URL configuration:\n  - " + problems.join("\n  - "));
-  }
 
   // --- Production: https required for every emailed-link base URL ---
   if (raw.NODE_ENV === "production") {
     for (const key of urlKeys) {
-      try {
-        const u = new URL(String(raw[key]));
-        if (u.protocol !== "https:") {
-          throw new Error(`[config] ${key} must use https: in production (got ${u.protocol})`);
-        }
-      } catch {
-        // _isAbsoluteUrl already returned false above
+      const value = raw[key];
+      if (!value || !_isAbsoluteUrl(String(value))) continue;
+      const u = new URL(String(value));
+      if (u.protocol !== "https:") {
+        problems.push(`${key} must use https: in production (got ${u.protocol})`);
       }
     }
+  }
+
+  if (problems.length) {
+    throw new Error("[config] Invalid base URL configuration:\n  - " + problems.join("\n  - "));
   }
 
   // --- Development: log a warning when a localhost default is in use ---
@@ -284,6 +283,7 @@ export const config = {
   get port(): number { return getConfig().port; },
   get corsOrigins(): string[] { return getConfig().corsOrigins; },
   get mongodbUri(): string { return getConfig().mongodbUri; },
+  get orgId(): string | undefined { return getConfig().orgId; },
   get jwt(): JwtConfig { return getConfig().jwt; },
   get totpEncryptionKey(): string { return getConfig().totpEncryptionKey; },
   get appName(): string { return getConfig().appName; },

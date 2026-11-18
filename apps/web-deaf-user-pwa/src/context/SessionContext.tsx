@@ -22,7 +22,12 @@ import {
   SignLatencyEntry,
 } from "../../../../shared/types/session";
 import { api, ApiError, setAuthToken, getAuthToken } from "../services/api";
-import { connectSocket, disconnectSocket, isConnected as socketIsConnected } from "../services/socket";
+import {
+  connectSocket,
+  disconnectSocket,
+  isConnected as socketIsConnected,
+  type AnimationPayload,
+} from "../services/socket";
 import { getDeviceId } from "../services/deviceId";
 import { requestTranslation } from "../services/translation";
 import type { Teller, TranslateResponse } from "../../../../shared/types/mobile";
@@ -83,6 +88,21 @@ const DEFAULT_ACCESSIBILITY: AccessibilitySettings = {
   dataSaver: false,
 };
 
+/** Merge an animation status event into an existing message's animation. */
+function mergeAnimation(
+  current: Message["animation"] | null | undefined,
+  p: AnimationPayload,
+): NonNullable<Message["animation"]> {
+  return {
+    status: p.status === "retry" ? "pending" : p.status,
+    url: p.url ?? current?.url ?? null,
+    durationMs: p.durationMs ?? current?.durationMs ?? null,
+    requestedAt: p.requestedAt ?? current?.requestedAt ?? null,
+    readyAt: p.readyAt ?? current?.readyAt ?? null,
+    error: p.error ?? current?.error ?? null,
+  };
+}
+
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -128,6 +148,34 @@ const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAUL
   const [endedByStaffWhileWaiting] = useState<boolean>(false);
 
   const [handLandmarks, setHandLandmarks] = useState<HandLandmarksPerFrame | null>(null);
+
+  // Animation status events can arrive just before the message itself (for
+  // example on a cache hit). Buffer them until the message exists.
+  const pendingAnimationsRef = useRef<Record<string, AnimationPayload>>({});
+
+  useEffect(() => {
+    const pending = pendingAnimationsRef.current;
+    const ready = messages.filter((m) => pending[m.id]);
+    if (ready.length === 0) return;
+    setMessages((prev) =>
+      prev.map((m) => {
+        const p = pending[m.id];
+        return p ? { ...m, animation: mergeAnimation(m.animation, p) } : m;
+      }),
+    );
+    for (const m of ready) delete pending[m.id];
+  }, [messages]);
+
+  const applyAnimation = useCallback((p: AnimationPayload) => {
+    pendingAnimationsRef.current[p.messageId] = p;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === p.messageId
+          ? { ...m, animation: mergeAnimation(m.animation, p) }
+          : m,
+      ),
+    );
+  }, []);
 
   const frameListenerRef = useRef<((frame: HandLandmarksPerFrame, handInfos: HandInfo[]) => void) | null>(null);
 
@@ -498,25 +546,7 @@ const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAUL
           return m.sender === "STAFF" ? "response" : "sent";
         });
       },
-      onAnimation: (p) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === p.messageId
-              ? {
-                  ...m,
-                  animation: {
-                    status: p.status,
-                    url: p.url,
-                    durationMs: p.durationMs,
-                    requestedAt: m.animation?.requestedAt ?? null,
-                    readyAt: m.animation?.readyAt ?? null,
-                    error: m.animation?.error ?? null,
-                  },
-                }
-              : m,
-          ),
-        );
-      },
+      onAnimation: applyAnimation,
       onSessionEnded: () => {
         setIsConnected(false);
         setSessionStatus("ENDED");
@@ -719,6 +749,11 @@ const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAUL
       setSessionId(session._id);
       setSessionStatus(session.status as "CONNECTING" | "ACTIVE" | "CANCELLED" | "ENDED");
       setSessionOwnerId(session.deafUser.toString());
+      // Restore the communication method too, otherwise a reload of a text
+      // session re-opens the sign/camera screen (and vice versa).
+      const restoredMethod: CommunicationMethod =
+        (session as { method?: string }).method === "text" ? "text" : "sign";
+      setMethodState(restoredMethod);
       const restoredStart = new Date(session.startedAt).getTime();
       if (Number.isFinite(restoredStart)) {
         setJoinedAt(restoredStart);
@@ -732,13 +767,13 @@ const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAUL
       const ui = records.map((r: any) => mapBackendMessage(r));
       setMessages(ui);
       if (session.status === "ACTIVE") {
-        goToStep(method === "text" ? "text" : "live");
+        goToStep(restoredMethod === "text" ? "text" : "live");
         const token = getAuthToken();
         if (token) {
           connectSocket(token, session._id, {
             onSessionConnected: () => {
               setIsConnected(true);
-              if (method !== "text") {
+              if (restoredMethod !== "text") {
                 void initialiseLandmarker();
               }
             },
@@ -765,25 +800,7 @@ const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAUL
                 return [...prev, mapBackendMessage(m)];
               });
             },
-            onAnimation: (p) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === p.messageId
-                    ? {
-                        ...m,
-                        animation: {
-                          status: p.status,
-                          url: p.url,
-                          durationMs: p.durationMs,
-                          requestedAt: m.animation?.requestedAt ?? null,
-                          readyAt: m.animation?.readyAt ?? null,
-                          error: m.animation?.error ?? null,
-                        },
-                      }
-                    : m,
-                ),
-              );
-            },
+            onAnimation: applyAnimation,
             onSessionEnded: () => {
               setIsConnected(false);
               setSessionStatus("ENDED");
@@ -814,7 +831,7 @@ const [accessibility, setAccessibility] = useState<AccessibilitySettings>(DEFAUL
       } catch { /* localStorage unavailable or corrupt */ }
       setError(describeError(err));
     }
-  }, [method, goToStep, initialiseLandmarker]);
+  }, [method, goToStep, initialiseLandmarker, applyAnimation]);
 
   const setMethod = useCallback((newMethod: CommunicationMethod) => {
     setMethodState(newMethod);
@@ -986,7 +1003,7 @@ function mapBackendMessage(m: {
   animationUrl?: string | null;
   generationStatus?: "pending" | "generating" | "completed" | "failed";
   animation?: {
-    status: "pending" | "ready" | "failed" | "skipped";
+    status: "pending" | "ready" | "failed" | "skipped" | "retry";
     url: string | null;
     durationMs: number | null;
     requestedAt: string | null;
@@ -994,6 +1011,10 @@ function mapBackendMessage(m: {
     error: string | null;
   } | null;
 }): UiMessage {
+  const rawAnimation = m.animation ?? null;
+  const normalisedAnimation = rawAnimation
+    ? { ...rawAnimation, status: rawAnimation.status === "retry" ? "pending" as const : rawAnimation.status }
+    : null;
   return {
     id: (m.id ?? m._id) as string,
     sender: m.sender === "USER" ? "user" : "staff",
@@ -1004,7 +1025,7 @@ function mapBackendMessage(m: {
     animationUrl: m.animationUrl ?? null,
     generationStatus: m.generationStatus ?? "pending",
     animation:
-      m.animation ??
+      normalisedAnimation ??
       (m.animationUrl
         ? {
             status:

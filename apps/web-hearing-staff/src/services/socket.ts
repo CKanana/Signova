@@ -174,7 +174,8 @@ export function sendStaffMessageAsync(
   text: string,
   method: "speech" | "text" = "speech",
 ): Promise<void> {
-  if (!socket || !socket.connected) {
+  const activeSocket = socket;
+  if (!activeSocket || !activeSocket.connected) {
     return Promise.reject(new Error("Not connected to the service."));
   }
   return new Promise<void>((resolve, reject) => {
@@ -196,31 +197,33 @@ export function sendStaffMessageAsync(
     const id = pendingSendStore.add(send);
 
     // Resolve on server's direct ack (order-independent, survives reconnect).
-    const onAcked = (ack: Record<string, unknown>) => {
+    const onAcked = () => {
       cleanup();
       pendingSendStore.drop(id);
-      resolve(ack);
+      resolve();
     };
-    socket.on(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
     // Also resolve via message:new in the session room (the staff socket's
-    // own broadcast). Used as a fallback and as the confirmation for the
-    // legacy fire-and-forget path.
-    socket.on(S2C_STAFF.MESSAGE_NEW, (m: WireMessage) => {
+    // own broadcast), used as a fallback when the direct ack is lost.
+    const onNew = (m: WireMessage) => {
       if (m.sessionId === sessionId && m.sender === "STAFF" && m.text === text && m.method === method) {
         const resolved = resolve as (value: unknown) => void;
         cleanup();
         pendingSendStore.drop(id);
         resolved(m);
       }
-    });
+    };
+    activeSocket.on(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
+    activeSocket.on(S2C_STAFF.MESSAGE_NEW, onNew);
 
-    // Clean up callbacks once resolved.
+    // Clean up callbacks once resolved (remove BOTH listeners so repeated
+    // sends do not accumulate handlers on the shared socket).
     const cleanup = () => {
-      socket?.off(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
+      activeSocket.off(S2C_FROM_SENDER.MESSAGE_ACKED, onAcked);
+      activeSocket.off(S2C_STAFF.MESSAGE_NEW, onNew);
     };
 
     try {
-      socket.emit(C2S.MESSAGE_SEND, { sessionId, text, method });
+      activeSocket.emit(C2S.MESSAGE_SEND, { sessionId, text, method });
     } catch (err) {
       cleanup();
       pendingSendStore.drop(id);

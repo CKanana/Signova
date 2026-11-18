@@ -9,6 +9,20 @@ export function securityHeaders() {
         crossOriginResourcePolicy: { policy: "cross-origin" },
     });
 }
+/** Dev-only: VS Code port forwarding serves the PWA from *.devtunnels.ms.
+ * Production keeps the strict CORS_ORIGINS allowlist. */
+export function isDevTunnelOrigin(origin) {
+    if (config.isProduction)
+        return false;
+    try {
+        const url = new URL(origin);
+        return (url.protocol === "https:" &&
+            (url.hostname === "devtunnels.ms" || url.hostname.endsWith(".devtunnels.ms")));
+    }
+    catch {
+        return false;
+    }
+}
 /** CORS with an allowlist from env. */
 export function corsMiddleware() {
     return cors({
@@ -17,6 +31,8 @@ export function corsMiddleware() {
             if (!origin)
                 return callback(null, true);
             if (config.corsOrigins.includes(origin))
+                return callback(null, true);
+            if (isDevTunnelOrigin(origin))
                 return callback(null, true);
             return callback(new Error(`Origin ${origin} not allowed by CORS`));
         },

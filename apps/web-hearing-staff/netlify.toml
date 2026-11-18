@@ -1,0 +1,32 @@
+# Signova Teller dashboard — Netlify site configuration.
+#
+# Netlify site settings:
+#   Base directory:    apps/web-hearing-staff
+#   Build command:     npm ci --workspaces=false --include=dev && npm run build
+#   Publish directory: dist
+#
+# Required build environment variables (Site configuration → Environment):
+#   NODE_VERSION            22.12.0
+#   VITE_API_URL            https://api.<SIGNOVA_DOMAIN>
+#   VITE_GOOGLE_CLIENT_ID   optional; enables Google sign-in
+#
+# This site is independent of the PWA and administrator sites.
+
+[build]
+  command = "npm ci --workspaces=false --include=dev && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22.12.0"
+
+# BrowserRouter deep links (/login, /staff/dashboard, /staff/session, …).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

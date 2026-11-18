@@ -256,8 +256,14 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
           if (current.kind !== "active" || current.session._id !== message.sessionId) {
             return current;
           }
-          // Confirm any pending optimistic copy of this message.
           const existing = getMessages(message.sessionId);
+          // Ignore a duplicate delivery of the same persisted message (for
+          // example when the socket re-emits after a reconnect): the server
+          // id is authoritative.
+          if (existing.some((m) => m.id === message.id)) {
+            return current;
+          }
+          // Confirm any pending optimistic copy of this message.
           const optimistic = existing.find(
             (m) => m.pending && m.sender === message.sender && m.text === message.text,
           );
@@ -399,14 +405,27 @@ export function StaffWorkspaceProvider({ children }: { children: ReactNode }) {
     setView({ kind: "idle" });
   }, []);
 
-  // Load org + tellers once authenticated, then restore any current session.
+  // Load org + tellers once authenticated.
   useEffect(() => {
     if (!isAuthenticated) return;
-    (async () => {
-      await reloadWorkspace();
-      await restoreCurrentSession();
-    })();
-  }, [isAuthenticated, reloadWorkspace, restoreCurrentSession]);
+    void reloadWorkspace();
+  }, [isAuthenticated, reloadWorkspace]);
+
+  // Restore any current session only AFTER the teller list is available.
+  // restoreCurrentSession looks the assigned teller up in tellersRef, so
+  // calling it immediately after reloadWorkspace() raced with React's state
+  // update and left reloaded dashboards showing "No active session".
+  const restoredForUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      restoredForUserRef.current = null;
+      return;
+    }
+    if (tellers.length === 0) return;
+    if (restoredForUserRef.current === user.id) return;
+    restoredForUserRef.current = user.id;
+    void restoreCurrentSession();
+  }, [isAuthenticated, user, tellers, restoreCurrentSession]);
 
   const sendReply = useCallback(
     async (text: string) => {

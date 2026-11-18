@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import type { Model, Document } from "mongoose";
+import type { Model } from "mongoose";
 import type { MessageSender } from "../../../shared/types/translation.js";
 
 /**
@@ -24,7 +24,7 @@ export interface IAnimation {
   error: string | null;
 }
 
-export interface IMessage extends Document {
+export interface IMessage {
   _id: Schema.Types.ObjectId;
   session: Schema.Types.ObjectId;
   organization: Schema.Types.ObjectId;
@@ -36,6 +36,8 @@ export interface IMessage extends Document {
   timestamp: Date;
   /** Animation attachment for this message (Phase 2). Nullable for old docs. */
   animation: IAnimation | null;
+  toJSON(): Record<string, unknown>;
+  save(): Promise<IMessage>;
 }
 
 const animationSchema = new Schema<IAnimation>(

@@ -8,7 +8,7 @@ import { apiLimiter } from "./middleware/rateLimit.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { initRealtime } from "./realtime/gateway.js";
 import { reconcileStuckTellers } from "./services/sessionService.js";
-import { startCircuitBreaker, pruneOldVideos } from "./services/messageService.js";
+import { startCircuitBreaker, pruneOldVideos, requeuePendingAnimations } from "./services/messageService.js";
 import authRoutes from "./routes/auth.js";
 import organizationRoutes from "./routes/organizations.js";
 import tellerRoutes from "./routes/tellers.js";
@@ -56,8 +56,10 @@ async function main() {
         // Repair any tellers left BUSY from a previous crash / unclean shutdown.
         void reconcileStuckTellers();
         // Animation service: open the circuit if the SignBridge service is down at
-        // boot, and poll for recovery. Periodically prune retained videos.
+        // boot, and poll for recovery. Recover any generation jobs that were lost
+        // when the previous process stopped, then prune retained videos.
         void startCircuitBreaker();
+        void requeuePendingAnimations();
         setInterval(async () => {
             try {
                 await pruneOldVideos();

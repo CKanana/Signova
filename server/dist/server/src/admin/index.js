@@ -6,6 +6,7 @@ import adminRouter from "./routes/adminRouter.js";
 import { acceptInvitationHandler, acceptInvitationByIdHandler } from "./controllers/invitationController.js";
 import { acceptStaffSetupHandler, activateStaffSetupHandler } from "./controllers/staffSetupController.js";
 import { acceptBootstrapHandler } from "./controllers/bootstrapController.js";
+import { recoverBootstrapEnrollmentHandler } from "./controllers/bootstrapController.js";
 import { inviteLimiter } from "../middleware/rateLimit.js";
 const router = Router();
 // Administration authentication (reuses the existing JWT + TOTP surface).
@@ -20,6 +21,10 @@ router.post("/staff/setup/accept", inviteLimiter, acceptStaffSetupHandler);
 router.post("/staff/setup/activate", inviteLimiter, activateStaffSetupHandler);
 // Public bootstrap acceptance for the first administrator (no bearer token required).
 router.post("/bootstrap/accept", acceptBootstrapHandler);
+// Recovery of an unusable bootstrap 2FA enrollment (challenge + password).
+router.post("/bootstrap/recover", inviteLimiter, recoverBootstrapEnrollmentHandler);
+// Backwards-compatible alias used by the integration suite / earlier clients.
+router.post("/bootstrap/recover-enrollment", inviteLimiter, recoverBootstrapEnrollmentHandler);
 // Admin-only API surface. Every route is org-scoped; role enforced server-side.
 router.use(requireAuth, requireRole("ADMIN"));
 // Mount the admin API router once at /api/admin.

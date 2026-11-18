@@ -1,0 +1,40 @@
+# Signova Administrator dashboard — Netlify site configuration.
+#
+# Netlify site settings:
+#   Base directory:    apps/web-admin-portal
+#   Build command:     npm ci --workspaces=false --include=dev && npm run build
+#   Publish directory: dist
+#
+# Required build environment variables (Site configuration → Environment):
+#   NODE_VERSION            22.12.0
+#   VITE_API_URL            https://api.<SIGNOVA_DOMAIN>
+#   VITE_STAFF_APP_URL      https://teller.<SIGNOVA_DOMAIN>
+#   VITE_GOOGLE_CLIENT_ID   optional; enables Google sign-in
+#
+# This site is independent of the PWA and teller sites. It must never ship
+# development helpers such as auth_bridge.html with live tokens.
+
+[build]
+  command = "npm ci --workspaces=false --include=dev && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22.12.0"
+
+# BrowserRouter deep links (/login, /admin-setup, /admin/overview, …).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/auth_bridge.html"
+  [headers.values]
+    Cache-Control = "no-store"
+    X-Robots-Tag = "noindex"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

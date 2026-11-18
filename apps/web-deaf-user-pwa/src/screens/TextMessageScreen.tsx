@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
-import { AnimationBlock } from "../components/AnimationBlock";
+import { StaffSignCard } from "../components/live/StaffSignCard";
 
 export function TextMessageScreen() {
   const {
@@ -283,16 +283,18 @@ export function TextMessageScreen() {
                 <span style={mergeStyles(styles.bubble, isStaff ? styles.bubbleStaff : styles.bubbleUser)}>
                   {m.text}
                 </span>
-                {isStaff && m.animation && (
-                  <AnimationBlock
-                    messageId={m.id}
-                    text={m.text}
-                    animation={m.animation}
-                    dataSaver={dataSaver}
-                    reduceMotion={reduceMotion}
-                    onRetry={(messageId) => void retryAnimation(sessionId ?? "", messageId)}
-                  />
-                )}
+                {isStaff ? (
+                  <div style={styles.staffAvatarWrap}>
+                    <StaffSignCard
+                      message={m}
+                      dataSaver={dataSaver}
+                      reduceMotion={reduceMotion}
+                      onRetry={(messageId) =>
+                        void retryAnimation(sessionId ?? "", messageId)
+                      }
+                    />
+                  </div>
+                ) : null}
                 {showTime && (
                   <span style={styles.messageTime}>{formatTime(m.timestamp)}</span>
                 )}
@@ -574,6 +576,8 @@ const styles = {
   } as React.CSSProperties,
   messageRowStaff: {
     alignSelf: "flex-start",
+    width: "100%",
+    maxWidth: "100%",
   } as React.CSSProperties,
   messageRowUser: {
     alignSelf: "flex-end",
@@ -604,17 +608,24 @@ const styles = {
     color: "var(--ink)",
     borderBottomLeftRadius: 4,
     border: "1px solid var(--border-soft)",
+    alignSelf: "flex-start",
   } as React.CSSProperties,
   bubbleUser: {
     background: "var(--purple-600)",
     color: "#FFFFFF",
     borderBottomRightRadius: 4,
+    alignSelf: "flex-end",
   } as React.CSSProperties,
   messageTime: {
     fontSize: 11,
     color: "var(--text-2)",
     alignSelf: "flex-end",
     marginTop: 2,
+  } as React.CSSProperties,
+  staffAvatarWrap: {
+    width: "100%",
+    maxWidth: 520,
+    marginTop: 6,
   } as React.CSSProperties,
   typingBubble: {
     alignSelf: "flex-start",

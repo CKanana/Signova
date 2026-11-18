@@ -10,6 +10,7 @@ import type {
   TellerStatus,
   SessionStatus,
 } from "../types/admin";
+import { API_BASE_URL } from "../config";
 
 export class ApiError extends Error {
   constructor(
@@ -54,7 +55,7 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     }
   }
 
-  let url = path;
+  let url = `${API_BASE_URL}${path}`;
   if (opts.params) {
     const searchParams = new URLSearchParams();
     for (const [key, val] of Object.entries(opts.params)) {
@@ -157,6 +158,12 @@ export const adminApi = {
       challengeToken: string;
       user: { id: string; name: string; email?: string };
     }>("/api/admin/bootstrap/accept", { method: "POST", body: { token, password }, auth: false }),
+
+  recoverBootstrapEnrollment: (challengeToken: string, password: string) =>
+    request<{ secret: string; otpauthUrl: string; qrDataUrl: string }>(
+      "/api/admin/bootstrap/recover",
+      { method: "POST", body: { challengeToken, password }, auth: false },
+    ),
 
   logout: (refreshToken: string) =>
     request<{ ok: boolean }>("/api/admin/logout", { method: "POST", body: { refreshToken }, auth: false }),

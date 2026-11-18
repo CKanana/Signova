@@ -8,8 +8,14 @@
  * EXPO_PUBLIC_API_URL.
  */
 
-const FALLBACK_API_URL = "http://localhost:4000";
+const configuredApiUrl = import.meta.env?.VITE_API_URL as string | undefined;
 
-export const API_BASE_URL: string =
-  (typeof import.meta !== "undefined" && (import.meta.env?.VITE_API_URL as string | undefined)) ||
-  FALLBACK_API_URL;
+/**
+ * Production builds must provide VITE_API_URL (https://api.<SIGNOVA_DOMAIN>).
+ * When it is absent the app uses same-origin requests, which is correct for
+ * the Vite dev proxy and fails loudly rather than silently calling localhost
+ * from an installed/deployed build.
+ */
+export const API_BASE_URL: string = configuredApiUrl
+  ? configuredApiUrl.replace(/\/+$/, "")
+  : "";

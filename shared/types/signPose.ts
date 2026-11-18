@@ -5,11 +5,17 @@ export interface SignPoseFrame {
   p: SignPoseCoordinate[];
 }
 
+export interface SignPoseDroppedLetter {
+  letter: string;
+  word: string;
+}
+
 export interface SignPoseSequence {
   status: "ok";
   text: string;
   glosses: string[];
   droppedWords: string[];
+  droppedLetters?: SignPoseDroppedLetter[];
   fps: number;
   durationMs: number;
   frameCount: number;

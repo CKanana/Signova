@@ -19,6 +19,12 @@ const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
 const REFRESH_TTL_DAYS = 7;
 
+/** Bootstrap administrator 2FA enrollment recovery input. */
+export interface RecoverBootstrapInput {
+  challengeToken: string;
+  password: string;
+}
+
 /** Current step in the Signova login flow. */
 export type LoginStep =
   | { kind: "credentials" }

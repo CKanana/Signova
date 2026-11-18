@@ -13,7 +13,7 @@ export function securityHeaders() {
 
 /** Dev-only: VS Code port forwarding serves the PWA from *.devtunnels.ms.
  * Production keeps the strict CORS_ORIGINS allowlist. */
-function isDevTunnelOrigin(origin: string): boolean {
+export function isDevTunnelOrigin(origin: string): boolean {
   if (config.isProduction) return false;
   try {
     const url = new URL(origin);

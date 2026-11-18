@@ -1,7 +1,7 @@
 import React from "react";
 import { useSession } from "../context/SessionContext";
 import { TouchButton } from "../components/ui/TouchButton";
-import { AnimationBlock } from "../components/AnimationBlock";
+import { StaffSignCard } from "../components/live/StaffSignCard";
 import { ArrowLeft, MessageSquare, User, Send } from "lucide-react";
 
 export function ConversationScreen() {
@@ -96,16 +96,18 @@ export function ConversationScreen() {
                   {m.text}
                 </span>
                 <span style={styles.messageTime}>{formatTime(m.timestamp)}</span>
-                {m.sender === "staff" && m.animation && (
-                  <AnimationBlock
-                    messageId={m.id}
-                    text={m.text}
-                    animation={m.animation}
-                    dataSaver={dataSaver}
-                    reduceMotion={reduceMotion}
-                    onRetry={(messageId) => void retryAnimation(sessionId ?? "", messageId)}
-                  />
-                )}
+                {m.sender === "staff" ? (
+                  <div style={styles.staffAvatarWrap}>
+                    <StaffSignCard
+                      message={m}
+                      dataSaver={dataSaver}
+                      reduceMotion={reduceMotion}
+                      onRetry={(messageId) =>
+                        void retryAnimation(sessionId ?? "", messageId)
+                      }
+                    />
+                  </div>
+                ) : null}
               </div>
             </React.Fragment>
           ))}
@@ -256,7 +258,7 @@ const styles = {
     padding: "4px 0",
   } as React.CSSProperties,
   bubbleUser: { alignSelf: "flex-end" } as React.CSSProperties,
-  bubbleStaff: { alignSelf: "flex-start" } as React.CSSProperties,
+  bubbleStaff: { alignSelf: "flex-start", maxWidth: "100%", width: "100%" } as React.CSSProperties,
   bubbleText: {
     padding: "10px 14px",
     borderRadius: 14,
@@ -274,8 +276,15 @@ const styles = {
     background: "var(--cream-card)",
     color: "var(--ink)",
     border: "1px solid var(--border-soft)",
+    maxWidth: "85%",
+    alignSelf: "flex-start",
     marginRight: "auto",
     borderRadius: "14px 14px 4px 14px",
+  } as React.CSSProperties,
+  staffAvatarWrap: {
+    width: "100%",
+    maxWidth: 520,
+    marginTop: 6,
   } as React.CSSProperties,
   messageTime: {
     fontSize: 11,
@@ -314,3 +323,4 @@ function mergeStyles<T extends Record<string, any>>(
   }
   return result as T;
 }
+

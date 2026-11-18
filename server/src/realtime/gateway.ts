@@ -1,6 +1,8 @@
 import type { Server as HttpServer } from "node:http";
 import { Server as SocketServer, type Socket } from "socket.io";
 import { verifyAccessToken, type AccessTokenPayload } from "../utils/jwt.js";
+import { config } from "../config/env.js";
+import { isDevTunnelOrigin } from "../middleware/security.js";
 import { NAMESPACE } from "./events.js";
 import { registerSocketHandlers } from "./rooms.js";
 import { sessionRoom, orgTellersRoom, userRoom, S2C_STAFF } from "./events.js";
@@ -18,7 +20,16 @@ let io: SocketServer | null = null;
 export function initRealtime(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     path: "/socket.io",
-    cors: { origin: true, credentials: true },
+    cors: {
+      origin(origin, callback) {
+        // Non-browser clients (native apps, curl) send no Origin header.
+        if (!origin) return callback(null, true);
+        if (config.corsOrigins.includes(origin)) return callback(null, true);
+        if (isDevTunnelOrigin(origin)) return callback(null, true);
+        return callback(null, false);
+      },
+      credentials: true,
+    },
   });
 
   const nsp = io.of(NAMESPACE);

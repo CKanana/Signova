@@ -27,18 +27,52 @@ export function AvatarHand({ hand }: AvatarHandProps) {
     palmCenter ?? (wrist ? { x: wrist.x, y: wrist.y - 9 } : undefined);
   if (!center) return null;
 
+  const detailedKnuckles = FINGER_ORDER.map(
+    (finger) => fingers[finger]?.[0],
+  ).filter((point): point is Point => Boolean(point));
   const hasDetailedFingers = FINGER_ORDER.some(
     (finger) => (fingers[finger]?.length ?? 0) > 0,
   );
+  const basePoints = [hand.baseThumb, hand.baseIndex, hand.basePinky].filter(
+    (point): point is Point => Boolean(point),
+  );
+  const anchor = wrist ?? center;
+  const scale = 1.34;
 
-  const basePoints = [
-    hand.baseThumb,
-    hand.baseIndex,
-    hand.basePinky,
-  ].filter((point): point is Point => Boolean(point));
+  const palmPath =
+    wrist && detailedKnuckles.length >= 3
+      ? [
+          `M ${wrist.x} ${wrist.y}`,
+          ...detailedKnuckles.map((point) => `L ${point.x} ${point.y}`),
+          "Z",
+        ].join(" ")
+      : null;
 
   return (
-    <>
+    <g
+      transform={`translate(${anchor.x} ${anchor.y}) scale(${scale}) translate(${-anchor.x} ${-anchor.y})`}
+    >
+      {palmPath ? (
+        <path
+          d={palmPath}
+          fill={AVATAR_COLORS.skin}
+          stroke={AVATAR_COLORS.skinShade}
+          strokeWidth={1.3}
+          strokeLinejoin="round"
+        />
+      ) : (
+        <ellipse
+          cx={center.x}
+          cy={center.y}
+          rx={avatarSizes.palmRx}
+          ry={avatarSizes.palmRy}
+          fill={AVATAR_COLORS.skin}
+          stroke={AVATAR_COLORS.skinShade}
+          strokeWidth={1.2}
+          transform={`rotate(${palmAngle - 90} ${center.x} ${center.y})`}
+        />
+      )}
+
       {hasDetailedFingers ? (
         <>
           {FINGER_ORDER.map((finger) => {
@@ -51,11 +85,11 @@ export function AvatarHand({ hand }: AvatarHandProps) {
                 key={`outline-${finger}`}
                 d={fingerPath(chain)}
                 stroke={AVATAR_COLORS.skinShade}
-                strokeWidth={width + 2.8}
+                strokeWidth={width + 3.4}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 fill="none"
-                opacity={0.24}
+                opacity={0.3}
               />
             );
           })}
@@ -77,18 +111,21 @@ export function AvatarHand({ hand }: AvatarHandProps) {
             );
           })}
           {FINGER_ORDER.flatMap((finger) =>
-            (fingers[finger] ?? []).map((point, index) => (
+            (fingers[finger] ?? []).map((point, index, chain) => (
               <circle
                 key={`joint-${finger}-${index}`}
                 cx={point.x}
                 cy={point.y}
-                r={finger === "thumb" ? 2.2 : 1.8}
-                fill={
-                  index === (fingers[finger]?.length ?? 0) - 1
-                    ? AVATAR_COLORS.skinLight
-                    : AVATAR_COLORS.skinShade
+                r={
+                  index === chain.length - 1
+                    ? 1.7
+                    : finger === "thumb"
+                      ? 1.5
+                      : 1.3
                 }
-                opacity={0.7}
+                fill="#F6D9C4"
+                stroke={AVATAR_COLORS.purple}
+                strokeWidth={0.6}
               />
             )),
           )}
@@ -96,27 +133,38 @@ export function AvatarHand({ hand }: AvatarHandProps) {
       ) : basePoints.length > 0 ? (
         <>
           {basePoints.map((point, index) => (
-            <path
-              key={`base-${index}`}
-              d={`M ${center.x} ${center.y} L ${point.x} ${point.y}`}
-              stroke={AVATAR_COLORS.skin}
-              strokeWidth={index === 0 ? avatarSizes.thumb : avatarSizes.finger}
-              strokeLinecap="round"
-            />
+            <g key={`base-${index}`}>
+              <path
+                d={`M ${center.x} ${center.y} L ${point.x} ${point.y}`}
+                stroke={AVATAR_COLORS.skinShade}
+                strokeWidth={
+                  (index === 0 ? avatarSizes.thumb : avatarSizes.finger) + 3
+                }
+                strokeLinecap="round"
+                opacity={0.28}
+                fill="none"
+              />
+              <path
+                d={`M ${center.x} ${center.y} L ${point.x} ${point.y}`}
+                stroke={AVATAR_COLORS.skin}
+                strokeWidth={
+                  index === 0 ? avatarSizes.thumb : avatarSizes.finger
+                }
+                strokeLinecap="round"
+                fill="none"
+              />
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r={1.6}
+                fill="#F6D9C4"
+                stroke={AVATAR_COLORS.purple}
+                strokeWidth={0.6}
+              />
+            </g>
           ))}
         </>
       ) : null}
-
-      <ellipse
-        cx={center.x}
-        cy={center.y}
-        rx={avatarSizes.palmRx}
-        ry={avatarSizes.palmRy}
-        fill={AVATAR_COLORS.skin}
-        stroke={AVATAR_COLORS.skinShade}
-        strokeWidth={0.8}
-        transform={`rotate(${palmAngle - 90} ${center.x} ${center.y})`}
-      />
 
       {wrist ? (
         <circle
@@ -125,11 +173,9 @@ export function AvatarHand({ hand }: AvatarHandProps) {
           r={avatarSizes.forearm / 2}
           fill={AVATAR_COLORS.skin}
           stroke={AVATAR_COLORS.skinShade}
-          strokeWidth={0.6}
+          strokeWidth={0.7}
         />
       ) : null}
-    </>
+    </g>
   );
 }
-
-

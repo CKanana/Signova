@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { ErrorBanner } from "../components/ui/States";
 import { IconEye, IconMessage, IconShield } from "../components/ui/Icons";
 import brandIcon from "/signova-mark-purple.png";
+import { STAFF_APP_URL } from "../config";
 import "../../../../shared/web-login/src/auth-layout.css";
 
 function isEmail(value: string) {
@@ -283,7 +284,7 @@ export function Login() {
                   Forgot password?
                 </button>
                 <a
-                  href={`${import.meta.env.VITE_STAFF_APP_URL ?? "http://localhost:5173"}/login`}
+                  href={`${STAFF_APP_URL}/login`}
                   className="staff-login__link"
                   style={{ background: "none", border: "none", cursor: "pointer" }}
                 >

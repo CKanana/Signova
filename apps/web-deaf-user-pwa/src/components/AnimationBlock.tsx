@@ -163,13 +163,15 @@ export function AnimationBlock({
 
   const handleRetry = useCallback(() => {
     setErrorShown(false);
-    if (fetchFailed) {
+    // Network/blob or playback failure: re-fetch/reload the same MP4 first.
+    if (fetchFailed || videoFailed) {
       setFetchFailed(false);
+      setVideoFailed(false);
       setReloadKey((value) => value + 1);
       return;
     }
     onRetry?.(messageId);
-  }, [messageId, onRetry, fetchFailed]);
+  }, [messageId, onRetry, fetchFailed, videoFailed]);
 
   const handleEnlarge = useCallback(() => {
     setEnlarged(true);
@@ -190,7 +192,7 @@ export function AnimationBlock({
             <p style={styles.failedTitle}>Animation unavailable.</p>
             <p style={styles.failedSub}>Please read the message above.</p>
           </div>
-          {onRetry && !videoFailed ? (
+          {onRetry ? (
             <TouchButtonPress onPress={handleRetry} label="Retry" style={styles.retryButton} />
           ) : null}
         </div>
